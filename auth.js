@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL = "";
+  const SUPABASE_URL = "https://ovooslmyfavrtlxazykq.supabase.co";
   const SUPABASE_KEY = "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
 
   const panel = document.getElementById("auth-panel");
