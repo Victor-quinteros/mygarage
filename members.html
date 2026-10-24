@@ -1,0 +1,155 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Members | GARAGE</title>
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    .members-page {
+      width: min(1000px, 92%);
+      margin: 40px auto;
+      padding-bottom: 40px;
+    }
+
+    .members-page h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .members-subtitle {
+      color: #aaa;
+      margin-bottom: 24px;
+    }
+
+    .members-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .member-card {
+      display: block;
+      padding: 20px;
+      border: 1px solid #333;
+      border-radius: 12px;
+      background: #111;
+      color: white;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+
+    .member-card:hover {
+      border-color: #39ff14;
+      transform: translateY(-2px);
+    }
+
+    .member-card h2 {
+      margin: 0 0 8px;
+      font-size: 1.2rem;
+    }
+
+    .member-card p {
+      color: #bbb;
+      margin: 8px 0;
+    }
+
+    .member-username {
+      color: #39ff14 !important;
+      font-size: 0.9rem;
+    }
+
+    .member-detail {
+      max-width: 650px;
+      padding: 24px;
+      margin-top: 24px;
+      border: 1px solid #333;
+      border-radius: 12px;
+      background: #111;
+      overflow-wrap: anywhere;
+    }
+
+    .member-detail h2 {
+      font-size: 1.6rem;
+    }
+
+    .member-detail p {
+      line-height: 1.6;
+    }
+
+    .members-search {
+      width: 100%;
+      max-width: 450px;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #151515;
+      color: white;
+      font: inherit;
+    }
+
+    .members-back {
+      display: inline-block;
+      margin: 12px 0;
+      color: #39ff14;
+    }
+
+    .members-message {
+      color: #aaa;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-icon">G</span>
+      GARAGE<span class="green">.</span>
+    </a>
+    <a class="auth-nav-link" href="index.html">Home</a>
+    <a class="auth-nav-link" href="profile.html">My Profile</a>
+  </header>
+
+  <main class="members-page">
+    <section id="directory-view">
+      <h1>GARAGE <span class="green">MEMBERS</span></h1>
+      <p class="members-subtitle">
+        Meet the people behind the builds.
+      </p>
+
+      <input
+        id="member-search"
+        class="members-search"
+        type="search"
+        placeholder="Search usernames, names, or cars..."
+        aria-label="Search members"
+      >
+
+      <p id="members-message" class="members-message" role="status">
+        Loading members...
+      </p>
+
+      <div id="members-grid" class="members-grid"></div>
+    </section>
+
+    <section id="member-view" hidden>
+      <a class="members-back" href="members.html">
+        ← All members
+      </a>
+
+      <h1>MEMBER <span class="green">PROFILE</span></h1>
+
+      <article id="member-detail" class="member-detail"></article>
+      <p id="member-message" class="members-message" role="status"></p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="members.js"></script>
+</body>
+</html>
