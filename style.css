@@ -26,6 +26,11 @@
   background: #39ff14;
 }
 
+#main-nav {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
 
 * { box-sizing: border-box; }
 
