@@ -381,3 +381,94 @@ textarea {
   .feature-grid, .listing-grid { grid-template-columns: 1fr; }
   .composer, .post { padding: 13px; }
 }
+
+
+/* Car Garage account interface */
+.auth-panel {
+  max-width: 440px;
+  margin: 28px auto;
+  padding: 24px;
+  color: #eee;
+  background: #101310;
+  border: 1px solid #39ff14;
+  border-radius: 14px;
+}
+
+.auth-panel h2 {
+  color: #39ff14;
+}
+
+.auth-panel label {
+  display: block;
+  margin: 14px 0 6px;
+}
+
+.auth-panel input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  color: #fff;
+  background: #080908;
+  border: 1px solid #394539;
+  border-radius: 8px;
+}
+
+.auth-panel button,
+#account-bar button {
+  margin-top: 14px;
+  padding: 11px 16px;
+  color: #39ff14;
+  background: #142014;
+  border: 1px solid #39ff14;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.auth-panel button:hover,
+#account-bar button:hover {
+  background: #203b1d;
+}
+
+.auth-panel button:disabled,
+#account-bar button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.auth-panel hr {
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid #394539;
+}
+
+#auth-status {
+  color: #39ff14;
+  overflow-wrap: anywhere;
+}
+
+#account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 14px;
+  color: #39ff14;
+  background: #101310;
+  border: 1px solid #2b3829;
+  border-radius: 10px;
+}
+
+#account-bar[hidden],
+.auth-panel[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 480px) {
+  .auth-panel {
+    margin: 16px 0;
+    padding: 16px;
+  }
+}
