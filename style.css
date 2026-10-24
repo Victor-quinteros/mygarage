@@ -489,3 +489,7 @@ textarea {
   color: #080908;
   background: #39ff14;
 }
+
+.auth-nav-link {
+  margin-left: auto;
+}
