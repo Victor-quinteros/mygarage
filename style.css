@@ -472,3 +472,20 @@ textarea {
     padding: 16px;
   }
 }
+
+
+.auth-nav-link {
+  display: inline-block;
+  padding: 10px 14px;
+  color: #39ff14;
+  background: #142014;
+  border: 1px solid #39ff14;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.auth-nav-link:hover {
+  color: #080908;
+  background: #39ff14;
+}
