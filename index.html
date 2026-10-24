@@ -1,15 +1,148 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <title>My Garage</title>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>My Garage</title>
+        <link rel="stylesheet" href="styles.css">
+    </head>
+    <body>
+        <header class="topbar">
+    <a class="brand" href="#">
+      <span class="brand-icon">G</span> GARAGE<span class="green">.</span>
+    </a>
+    <input id="search" class="search" placeholder="Search cars, builds, people">
+    <button id="profileBtn" class="profile-chip">👤 My profile</button>
+  </header>
 
-</head>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow">COMMUNITY</p>
+      <button class="nav active" data-page="feed">⌂ &nbsp; Home feed</button>
+      <button class="nav" data-page="discover">◎ &nbsp; Discover builds</button>
+      <button class="nav" data-page="market">◇ &nbsp; Car marketplace</button>
+      <button class="nav" data-page="garage">⚙ &nbsp; My garage</button>
+      <button class="nav" data-page="messages">✉ &nbsp; Messages</button>
+      <div class="side-note">
+        <span class="green">●</span> BUILT FOR ENTHUSIASTS
+        <p>Every car has a story.</p>
+      </div>
+    </aside>
 
-<body>
+    <main class="main">
+      <section class="hero">
+        <p class="eyebrow green">YOUR AUTOMOTIVE COMMUNITY</p>
+        <h1>BUILD IT.<br>DRIVE IT. <span class="green">SHARE IT.</span></h1>
+        <p>Show off your build. Learn from the community. Find your next project.</p>
+      </section>
 
-<button>Home</button>
+      <section id="feedPage" class="page">
+        <div class="section-heading">
+          <h2>Community feed</h2>
+          <span class="live"><i></i> YOUR GARAGE</span>
+        </div>
 
+         <form id="postForm" class="composer">
+          <label for="postText">What's happening in your garage?</label>
+          <textarea id="postText" placeholder="Share your latest build, repair or car meet..." required></textarea>
+          <div class="composer-bottom">
+            <label class="upload-label" for="postMedia">＋ Photo/video</label>
+            <input id="postMedia" type="file" accept="image/*,video/*" hidden>
+            <span id="fileName" class="muted">No media selected</span>
+            <button class="primary" type="submit">Publish post ↗</button>
+          </div>
+          <div id="mediaPreview"></div>
+        </form>
+<div id="feed"></div>
+      </section>
 
-</body>
+      <section id="discoverPage" class="page hidden">
+        <div class="section-heading"><h2>Discover builds</h2></div>
+        <p class="muted">Find inspiration for your next project.</p>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon">🏁</div>
+            <h3>Performance builds</h3>
+            <p>Engine swaps, tuning and track projects.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🔧</div>
+            <h3>DIY repairs</h3>
+            <p>Maintenance tips and workshop projects.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">✨</div>
+            <h3>Custom style</h3>
+            <p>Restorations, paint, wheels and interiors.</p>
+          </article>
+        </div>
+      </section>
 
+       <section id="marketPage" class="page hidden">
+        <div class="section-heading"><h2>Car marketplace</h2></div>
+        <form id="carForm" class="composer">
+          <h3>List a car</h3>
+          <input id="carName" placeholder="Car name (e.g. Honda Civic 2008)" required>
+          <input id="carPrice" type="number" min="0" placeholder="Price in USD" required>
+          <input id="carDetails" placeholder="Condition, mileage, location...">
+          <button class="primary" type="submit">＋ Add listing</button>
+        </form>
+        <div id="carListings" class="listing-grid"></div>
+      </section>
+
+      <section id="garagePage" class="page hidden">
+        <div class="section-heading"><h2>My garage</h2></div>
+        <div class="composer">
+          <h3>Your profile</h3>
+          <label for="username">Display name</label>
+          <input id="username" placeholder="Your name or garage name">
+          <label for="bio">About you</label>
+          <textarea id="bio" placeholder="Tell the community about your cars..."></textarea>
+          <button id="saveProfile" class="primary">Save profile</button>
+        </div>
+        <div id="profileSummary" class="composer"></div>
+        <h3>Repair portfolio</h3>
+        <form id="repairForm" class="composer">
+          <input id="repairTitle" placeholder="Project (e.g. Brake replacement)" required>
+          <textarea id="repairDetails" placeholder="What work did you do? Parts, process, results..."></textarea>
+          <button class="primary" type="submit">＋ Add project</button>
+        </form>
+        <div id="repairs"></div>
+      </section>
+
+      <section id="messagesPage" class="page hidden">
+        <div class="section-heading"><h2>Messages</h2></div>
+        <div class="composer">
+          <p>Prototype messaging</p>
+          <p class="muted">Choose a demo member to test a local conversation. Real private messaging requires user accounts and a secure backend.</p>
+          <form id="messageForm">
+            <input id="messageTo" placeholder="Member name" required>
+            <div id="conversation" class="conversation"></div>
+            <textarea id="messageText" placeholder="Write a message..." required></textarea>
+            <button class="primary" type="submit">Send message ↗</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <aside class="rightbar">
+      <div class="panel">
+        <p class="eyebrow">GARAGE SPOTLIGHT</p>
+        <div class="spotlight-art">🏎️</div>
+        <h3>Show them your build.</h3>
+        <p class="muted">Your next project could inspire someone.</p>
+        <button id="shareBtn" class="primary full">＋ Create a post</button>
+      </div>
+      <div class="panel">
+        <p class="eyebrow">COMMUNITY MEMBERS</p>
+        <div id="members"></div>
+      </div>
+      <p class="footer-note">GARAGE. <span class="green">DRIVEN BY COMMUNITY.</span></p>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="script.js"></script>
+
+    </body>
 </html>
