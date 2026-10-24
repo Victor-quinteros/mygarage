@@ -510,3 +510,8 @@ button.auth-nav-link {
   font-family: inherit;
   font-size: inherit;
 }
+
+#auth-link[hidden],
+#logout-btn[hidden] {
+  display: none !important;
+}
