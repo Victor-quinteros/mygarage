@@ -511,6 +511,41 @@ button.auth-nav-link {
   font-size: inherit;
 }
 
+
+#carForm label {
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 5px;
+}
+
+#carForm input,
+#carForm textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+#carList {
+  display: grid;
+  gap: 12px;
+}
+
+.car-card {
+  padding: 16px;
+  border: 1px solid #303b33;
+  border-radius: 12px;
+  background: #111713;
+  overflow-wrap: anywhere;
+}
+
+.car-card h3 {
+  margin-top: 0;
+}
+
+.car-card p {
+  white-space: pre-wrap;
+}
+
 #auth-link[hidden],
 #logout-btn[hidden] {
   display: none !important;
