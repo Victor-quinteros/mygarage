@@ -202,9 +202,18 @@ function showPage(page) {
   });
 }
 
+
 document.querySelectorAll(".nav").forEach(button => {
-  button.addEventListener("click", () => showPage(button.dataset.page));
+  button.addEventListener("click", () => {
+    if (button.dataset.page === "members") {
+      window.location.href = "members.html";
+      return;
+    }
+
+    showPage(button.dataset.page);
+  });
 });
+
 
 $("search").addEventListener("input", () => {
   renderFeed();
