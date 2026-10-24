@@ -7,6 +7,79 @@
         <link rel="stylesheet" href="style.css">
     </head>
     <body>
+
+    
+<!-- Car Garage: account interface -->
+<section id="auth-panel" class="auth-panel">
+  <h2>Join the Garage</h2>
+  <p>Create an account or sign in to your existing account.</p>
+
+  <form id="signup-form">
+    <h3>Create Account</h3>
+
+    <label for="signup-name">Display name</label>
+    <input
+      id="signup-name"
+      type="text"
+      maxlength="40"
+      autocomplete="nickname"
+      required
+    />
+
+    <label for="signup-email">Email</label>
+    <input
+      id="signup-email"
+      type="email"
+      autocomplete="email"
+      required
+    />
+
+    <label for="signup-password">Password (minimum 8 characters)</label>
+    <input
+      id="signup-password"
+      type="password"
+      minlength="8"
+      autocomplete="new-password"
+      required
+    />
+
+    <button type="submit">Create Account</button>
+  </form>
+
+  <hr />
+
+  <form id="login-form">
+    <h3>Already a member?</h3>
+
+    <label for="login-email">Email</label>
+    <input
+      id="login-email"
+      type="email"
+      autocomplete="email"
+      required
+    />
+
+    <label for="login-password">Password</label>
+    <input
+      id="login-password"
+      type="password"
+      autocomplete="current-password"
+      required
+    />
+
+    <button type="submit">Log In</button>
+  </form>
+
+  <p id="auth-status" role="status" aria-live="polite"></p>
+</section>
+
+<div id="account-bar" hidden>
+  <span id="account-label"></span>
+  <button id="logout-button" type="button">Log Out</button>
+</div>
+<!-- End account interface -->
+
+        
         <header class="topbar">
     <a class="brand" href="#">
       <span class="brand-icon">G</span> GARAGE<span class="green">.</span>
