@@ -1,0 +1,146 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>My Profile | GARAGE</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    .profile-page {
+      width: min(600px, 92%);
+      margin: 50px auto;
+      padding-bottom: 40px;
+    }
+
+    .profile-page h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .profile-intro {
+      color: #aaa;
+      margin-bottom: 28px;
+    }
+
+    #profile-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    #profile-form label {
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    #profile-form input,
+    #profile-form textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #151515;
+      color: white;
+      font: inherit;
+    }
+
+    #profile-form input:focus,
+    #profile-form textarea:focus {
+      outline: 1px solid #39ff14;
+      border-color: #39ff14;
+    }
+
+    #profile-form textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    #profile-form button {
+      margin-top: 16px;
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      background: #39ff14;
+      color: #080808;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #profile-form button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #profile-status {
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-icon">G</span>
+      GARAGE<span class="green">.</span>
+    </a>
+
+    <a href="index.html" class="auth-nav-link">Home</a>
+  </header>
+
+  <main class="profile-page">
+    <h1>MY <span class="green">PROFILE</span></h1>
+
+    <p class="profile-intro">
+      Build your identity in the GARAGE community.
+    </p>
+
+    <form id="profile-form">
+      <label for="username">Username</label>
+      <input
+        id="username"
+        type="text"
+        minlength="3"
+        maxlength="24"
+        placeholder="e.g. boostking"
+        autocomplete="username"
+        required
+      >
+
+      <label for="display-name">Display name</label>
+      <input
+        id="display-name"
+        type="text"
+        maxlength="40"
+        placeholder="What should people call you?"
+      >
+
+      <label for="bio">About you</label>
+      <textarea
+        id="bio"
+        maxlength="300"
+        placeholder="Tell the community about yourself..."
+      ></textarea>
+
+      <label for="favorite-car">Favorite car</label>
+      <input
+        id="favorite-car"
+        type="text"
+        maxlength="80"
+        placeholder="e.g. Nissan Skyline R34"
+      >
+
+      <button type="submit">Save Profile</button>
+
+      <p id="profile-status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="profile.js"></script>
+</body>
+</html>
