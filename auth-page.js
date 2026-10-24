@@ -1,6 +1,7 @@
 
 (() => {
   "use strict";
+  console.log("GARAGE auth-page.js loaded");
 
   // Replace these with your own Supabase project details.
   const SUPABASE_URL = "https://ovooslmyfavrtlxazykq.supabase.co";
