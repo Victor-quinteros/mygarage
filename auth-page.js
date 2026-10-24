@@ -3,8 +3,8 @@
   "use strict";
 
   // Replace these with your own Supabase project details.
-  const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL_HERE";
-  const SUPABASE_KEY = "PASTE_YOUR_PUBLISHABLE_KEY_HERE";
+  const SUPABASE_URL = "https://ovooslmyfavrtlxazykq.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
 
   const loginForm = document.getElementById("login-form");
   const signupForm = document.getElementById("signup-form");
