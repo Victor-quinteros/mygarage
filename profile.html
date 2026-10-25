@@ -95,4 +95,187 @@
       margin-top: 8px;
     }
 
-    #profile-form input
+    #profile-form input:not([type="file"]),
+    #profile-form textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #151515;
+      color: white;
+      font: inherit;
+    }
+
+    #profile-form input:focus,
+    #profile-form textarea:focus {
+      outline: 1px solid #39ff14;
+      border-color: #39ff14;
+    }
+
+    #profile-form textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    #profile-form button[type="submit"] {
+      margin-top: 16px;
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      background: #39ff14;
+      color: #080808;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #profile-form button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #profile-status {
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-icon">G</span>
+      GARAGE<span class="green">.</span>
+    </a>
+
+    <a href="index.html" class="auth-nav-link">Home</a>
+  </header>
+
+  <main class="profile-page">
+    <h1>MY <span class="green">PROFILE</span></h1>
+
+    <p class="profile-intro">
+      Build your identity in the GARAGE community.
+    </p>
+
+    <form id="profile-form">
+      <!-- Profile picture -->
+      <div class="avatar-section">
+        <img
+          id="avatar-preview"
+          class="avatar-preview"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='60' fill='%23151515'/%3E%3Ccircle cx='60' cy='43' r='22' fill='%23555555'/%3E%3Cpath d='M18 112c0-24 18-38 42-38s42 14 42 38' fill='%23555555'/%3E%3C/svg%3E"
+          alt="Profile picture preview"
+        >
+
+        <input
+          id="avatar-file"
+          name="avatar"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          aria-describedby="avatar-help"
+        >
+
+        <label class="avatar-upload-label" for="avatar-file">
+          Choose Profile Picture
+        </label>
+
+        <p id="avatar-help" class="avatar-help">
+          JPG, PNG, WebP or GIF. Maximum 2 MB.
+        </p>
+      </div>
+
+      <label for="username">Username</label>
+      <input
+        id="username"
+        type="text"
+        minlength="3"
+        maxlength="24"
+        placeholder="e.g. boostking"
+        autocomplete="username"
+        required
+      >
+
+      <label for="display-name">Display name</label>
+      <input
+        id="display-name"
+        type="text"
+        maxlength="40"
+        placeholder="What should people call you?"
+      >
+
+      <label for="bio">About you</label>
+      <textarea
+        id="bio"
+        maxlength="300"
+        placeholder="Tell the community about yourself..."
+      ></textarea>
+
+      <label for="favorite-car">Favorite car</label>
+      <input
+        id="favorite-car"
+        type="text"
+        maxlength="80"
+        placeholder="e.g. Nissan Skyline R34"
+      >
+
+      <button type="submit">Save Profile</button>
+
+      <p
+        id="profile-status"
+        role="status"
+        aria-live="polite"
+      ></p>
+    </form>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="profile.js"></script>
+
+  <!-- Local preview only; persistent uploading is handled by profile.js. -->
+  <script>
+    (() => {
+      const input = document.getElementById("avatar-file");
+      const preview = document.getElementById("avatar-preview");
+      const status = document.getElementById("profile-status");
+
+      let previewUrl = "";
+
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          previewUrl = "";
+        }
+
+        if (!file) return;
+
+        const allowedTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/gif"
+        ];
+
+        if (!allowedTypes.includes(file.type)) {
+          input.value = "";
+          status.textContent = "Choose a JPG, PNG, WebP or GIF image.";
+          return;
+        }
+
+        if (file.size > 2 * 1024 * 1024) {
+          input.value = "";
+          status.textContent = "Your image must be 2 MB or smaller.";
+          return;
+        }
+
+        previewUrl = URL.createObjectURL(file);
+        preview.src = previewUrl;
+        status.textContent = "Preview ready. Save your profile to upload it.";
+      });
+    })();
+  </script>
+</body>
+</html>
+```
