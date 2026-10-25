@@ -153,8 +153,12 @@ function renderListings() {
 
 function renderProfile() {
   const profile = getProfile();
-  $("username").value = profile.name === "Garage Member" ? "" : profile.name;
-  $("bio").value = profile.bio === "Car enthusiast" ? "" : profile.bio;
+const usernameInput = $("username");
+
+if (usernameInput) {
+  usernameInput.value =
+    profile.name === "Garage Member" ? "" : profile.name;
+}  $("bio").value = profile.bio === "Car enthusiast" ? "" : profile.bio;
   $("profileSummary").innerHTML = `
     <div class="post-head">
       <div class="avatar">${escapeHTML(profile.name.charAt(0).toUpperCase())}</div>
