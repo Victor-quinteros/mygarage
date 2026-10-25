@@ -150,30 +150,40 @@
     }).join("");
   }
 
-  async function loadPersonalPosts() {
-    if (!currentUser) return;
+  
+async function loadPersonalPosts() {
+  if (!currentUser) return;
 
-    showStatus("Loading your personal posts…");
+  showStatus("Loading your personal posts…");
 
-    const { data, error } = await client
+  try {
+    const query = client
       .from("posts")
       .select("id, user_id, caption, image_url, created_at, is_community")
       .eq("user_id", currentUser.id)
       .eq("is_community", false)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("My Feed load error:", error);
-      showStatus(
-        "Could not load your posts: " + error.message,
-        true
-      );
-      return;
-    }
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(
+          "Supabase took too long to respond. Check your connection and Supabase project status."
+        ));
+      }, 15000);
+    });
+
+    const { data, error } = await Promise.race([query, timeout]);
+
+    if (error) throw error;
 
     renderPosts(data || []);
     showStatus("");
+  } catch (error) {
+    console.error("My Feed load error:", error);
+    showStatus("Could not load your posts: " + error.message, true);
   }
+}
+
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
