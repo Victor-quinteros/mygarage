@@ -1,0 +1,199 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Feed | GARAGE</title>
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    .feed-page {
+      width: min(700px, 92%);
+      margin: 40px auto;
+      padding-bottom: 40px;
+    }
+
+    .feed-page h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .feed-intro {
+      color: #aaa;
+      margin-bottom: 24px;
+    }
+
+    #post-form {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 12px;
+    }
+
+    #post-caption {
+      width: 100%;
+      min-height: 110px;
+      box-sizing: border-box;
+      padding: 12px;
+      resize: vertical;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #151515;
+      color: white;
+      font: inherit;
+    }
+
+    #post-caption:focus {
+      outline: 1px solid #39ff14;
+    }
+
+    #post-image {
+      color: #bbb;
+      max-width: 100%;
+    }
+
+    #post-form button {
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #39ff14;
+      color: #080808;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #post-form button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #feed-status {
+      color: #aaa;
+      overflow-wrap: anywhere;
+    }
+
+    #feed-list {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .feed-post {
+      min-width: 0;
+      padding: 18px;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .feed-post-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .feed-post-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #222;
+      border: 1px solid #39ff14;
+    }
+
+    .feed-post-author {
+      margin: 0;
+      font-weight: bold;
+    }
+
+    .feed-post-date {
+      margin: 4px 0;
+      color: #999;
+      font-size: 0.85rem;
+    }
+
+    .feed-post-caption {
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    .feed-post-image {
+      display: block;
+      width: 100%;
+      max-height: 520px;
+      margin-top: 14px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #080808;
+    }
+
+    .feed-empty {
+      color: #999;
+      text-align: center;
+      padding: 24px 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-icon">G</span>
+      GARAGE<span class="green">.</span>
+    </a>
+
+    <a class="auth-nav-link" href="index.html">Home</a>
+    <a class="auth-nav-link" href="feed.html">My Feed</a>
+    <a class="auth-nav-link" href="profile.html">My Profile</a>
+    <a class="auth-nav-link" href="members.html">Members</a>
+  </header>
+
+  <main class="feed-page">
+    <h1>MY <span class="green">FEED</span></h1>
+
+    <p class="feed-intro">
+      Share your builds, photos, and updates with the GARAGE community.
+    </p>
+
+    <form id="post-form">
+      <label for="post-caption">What's happening in your garage?</label>
+
+      <textarea
+        id="post-caption"
+        maxlength="2000"
+        placeholder="Show off your latest build..."
+      ></textarea>
+
+      <label for="post-image">Add a photo (optional)</label>
+
+      <input
+        id="post-image"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+      >
+
+      <p class="feed-post-date">
+        JPG, PNG, WebP or GIF. Maximum 5 MB.
+      </p>
+
+      <button type="submit" id="publish-post-button">
+        POST
+      </button>
+
+      <p id="feed-status" role="status" aria-live="polite"></p>
+    </form>
+
+    <div id="feed-list">
+      <p class="feed-empty">Loading your posts...</p>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="feed.js"></script>
+</body>
+</html>
