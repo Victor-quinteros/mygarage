@@ -381,20 +381,7 @@ $("carForm").addEventListener("submit", event => {
   notify("Car listing added!");
 });
 
-const repairForm = $("repairForm");
 
-if (repairForm) repairForm.addEventListener("submit", event => {  event.preventDefault();
-
-  repairs.unshift({
-    title: $("repairTitle").value.trim(),
-    details: $("repairDetails").value.trim()
-  });
-
-  event.target.reset();
-  renderRepairs();
-  renderProfile();
-  notify("Project added to your portfolio.");
-});
 
 $("messageTo").addEventListener("input", renderMessages);
 
