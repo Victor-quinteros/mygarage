@@ -359,6 +359,47 @@
         aria-live="polite"
       ></p>
     </form>
+    
+<section class="my-feed" id="my-feed">
+  <h2>MY <span class="green">FEED</span></h2>
+
+  <p class="feed-intro">
+    Share your builds, photos, and updates with the GARAGE community.
+  </p>
+
+  <form id="post-form">
+    <label for="post-caption">What's happening in your garage?</label>
+
+    <textarea
+      id="post-caption"
+      maxlength="2000"
+      placeholder="Show off your latest build..."
+    ></textarea>
+
+    <label for="post-image">Add a photo (optional)</label>
+
+    <input
+      id="post-image"
+      type="file"
+      accept="image/jpeg,image/png,image/webp,image/gif"
+    />
+
+    <p class="avatar-help">
+      JPG, PNG, WebP or GIF. Maximum 5 MB.
+    </p>
+
+    <button type="submit" id="publish-post-button">
+      POST
+    </button>
+
+    <p id="feed-status" role="status" aria-live="polite"></p>
+  </form>
+
+  <div id="feed-list" class="feed-list">
+    <p class="feed-empty">Your posts will appear here.</p>
+  </div>
+</section>
+
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
