@@ -2,16 +2,7 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL =
-    "https://ovooslmyfavrtlxazykq.supabase.co";
-
-  const SUPABASE_KEY =
-    "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
-
-  const client = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
+  const client = window.garageSupabase;
 
   const form = document.getElementById("post-form");
   const captionInput = document.getElementById("post-caption");
@@ -20,218 +11,240 @@
   const status = document.getElementById("feed-status");
   const feedList = document.getElementById("feed-list");
 
-  const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-  const ALLOWED_TYPES = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/gif"
-  ];
-
-  async function getUser() {
-    const { data, error } = await client.auth.getUser();
-
-    if (error) throw error;
-
-    if (!data.user) {
-      throw new Error("Please log in before using My Feed.");
+  if (!client) {
+    if (status) {
+      status.textContent =
+        "Supabase did not load. Check supabase-client.js and index.html.";
     }
+    return;
+  }
 
-    return data.user;
+  if (!form || !captionInput || !publishButton || !feedList) {
+    console.error("My Feed: Required HTML elements were not found.");
+    return;
+  }
+
+  let currentUser = null;
+  let isPublishing = false;
+
+  function showStatus(message, isError = false) {
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = isError ? "#ff7777" : "";
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[character]);
   }
 
   function formatDate(value) {
+    if (!value) return "";
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "Date unavailable";
-    }
-
-    return date.toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short"
-    });
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString();
   }
 
-  function renderPost(post, profile) {
-    const article = document.createElement("article");
-    article.className = "feed-post";
+  function getFileExtension(file) {
+    const nameExtension = file.name.includes(".")
+      ? file.name.split(".").pop().toLowerCase()
+      : "";
 
-    const header = document.createElement("div");
-    header.className = "feed-post-header";
+    const allowed = [
+      "jpg", "jpeg", "png", "gif", "webp",
+      "mp4", "webm", "mov"
+    ];
 
-    if (profile?.avatar_url) {
-      const avatar = document.createElement("img");
-      avatar.className = "feed-post-avatar";
-      avatar.src = profile.avatar_url;
-      avatar.alt = "Profile picture";
-      avatar.loading = "lazy";
+    if (allowed.includes(nameExtension)) return nameExtension;
 
-      avatar.addEventListener("error", () => avatar.remove(), {
-        once: true
+    const mimeMap = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "video/mp4": "mp4",
+      "video/webm": "webm",
+      "video/quicktime": "mov"
+    };
+
+    return mimeMap[file.type] || "";
+  }
+
+  async function uploadMedia(file) {
+    if (!file) return null;
+
+    const maxSize = 8 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      throw new Error("Choose a file smaller than 8 MB.");
+    }
+
+    const extension = getFileExtension(file);
+
+    if (!extension) {
+      throw new Error(
+        "Unsupported file. Use JPG, PNG, GIF, WebP, MP4, WebM, or MOV."
+      );
+    }
+
+    const path =
+      `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+
+    const { error: uploadError } = await client.storage
+      .from("post-images")
+      .upload(path, file, {
+        upsert: false,
+        contentType: file.type || undefined
       });
 
-      header.appendChild(avatar);
-    }
+    if (uploadError) throw uploadError;
 
-    const author = document.createElement("p");
-    author.className = "feed-post-author";
-    author.textContent =
-      profile?.display_name || profile?.username || "GARAGE Member";
+    const { data } = client.storage
+      .from("post-images")
+      .getPublicUrl(path);
 
-    header.appendChild(author);
-    article.appendChild(header);
-
-    const date = document.createElement("p");
-    date.className = "feed-post-date";
-    date.textContent = formatDate(post.created_at);
-    article.appendChild(date);
-
-    if (post.caption) {
-      const caption = document.createElement("p");
-      caption.className = "feed-post-caption";
-      caption.textContent = post.caption;
-      article.appendChild(caption);
-    }
-
-    if (post.image_url) {
-      const image = document.createElement("img");
-      image.className = "feed-post-image";
-      image.src = post.image_url;
-      image.alt = "Photo attached to post";
-      image.loading = "lazy";
-
-      image.addEventListener("error", () => {
-        image.alt = "Post image could not be loaded";
-      }, { once: true });
-
-      article.appendChild(image);
-    }
-
-    feedList.appendChild(article);
+    return data.publicUrl;
   }
 
-  async function loadPosts(user) {
-    status.textContent = "Loading your posts...";
-    feedList.replaceChildren();
-
-    const { data: posts, error } = await client
-      .from("posts")
-      .select("id, user_id, caption, image_url, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    const { data: profile, error: profileError } = await client
-      .from("profiles")
-      .select("username, display_name, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) throw profileError;
-
-    if (!posts || posts.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "feed-empty";
-      empty.textContent =
-        "No posts yet. Share your first build or update!";
-      feedList.appendChild(empty);
-    } else {
-      posts.forEach((post) => renderPost(post, profile));
+  function renderPosts(posts) {
+    if (!posts.length) {
+      feedList.innerHTML =
+        '<p class="feed-empty">You have no personal posts yet. Create one above.</p>';
+      return;
     }
 
-    status.textContent =
-      posts.length + (posts.length === 1
-        ? " post published."
-        : " posts published.");
+    feedList.innerHTML = posts.map((post) => {
+      const caption = escapeHtml(post.caption);
+      const date = escapeHtml(formatDate(post.created_at));
+      const mediaUrl = post.image_url
+        ? escapeHtml(post.image_url)
+        : "";
+
+      let media = "";
+
+      if (mediaUrl) {
+        const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(mediaUrl);
+
+        media = isVideo
+          ? `<video class="post-media" controls preload="metadata"
+               src="${mediaUrl}"></video>`
+          : `<img class="post-media" loading="lazy"
+               src="${mediaUrl}" alt="Post media">`;
+      }
+
+      return `
+        <article class="post" data-post-id="${escapeHtml(post.id)}">
+          <div class="post-header">
+            <strong>My personal post</strong>
+            <time>${date}</time>
+          </div>
+          ${caption ? `<p>${caption}</p>` : ""}
+          ${media}
+        </article>
+      `;
+    }).join("");
+  }
+
+  async function loadPersonalPosts() {
+    if (!currentUser) return;
+
+    showStatus("Loading your personal posts…");
+
+    const { data, error } = await client
+      .from("posts")
+      .select("id, user_id, caption, image_url, created_at, is_community")
+      .eq("user_id", currentUser.id)
+      .eq("is_community", false)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("My Feed load error:", error);
+      showStatus(
+        "Could not load your posts: " + error.message,
+        true
+      );
+      return;
+    }
+
+    renderPosts(data || []);
+    showStatus("");
   }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (isPublishing) return;
+
     const caption = captionInput.value.trim();
-    const imageFile = imageInput.files?.[0] || null;
+    const file = imageInput?.files?.[0] || null;
 
-    if (!caption && !imageFile) {
-      status.textContent = "Write a caption or choose a photo first.";
+    if (!caption && !file) {
+      showStatus("Write something or choose a photo/video.", true);
       return;
     }
 
-    if (imageFile && !ALLOWED_TYPES.includes(imageFile.type)) {
-      status.textContent = "Choose a JPG, PNG, WebP, or GIF image.";
-      return;
-    }
-
-    if (imageFile && imageFile.size > MAX_IMAGE_SIZE) {
-      status.textContent = "Your photo must be 5 MB or smaller.";
-      return;
-    }
-
+    isPublishing = true;
     publishButton.disabled = true;
-    status.textContent = "Publishing your post...";
+    showStatus("Publishing your personal post…");
+
+    let uploadedUrl = null;
 
     try {
-      const user = await getUser();
-      let imageUrl = null;
+      const { data: userData, error: userError } =
+        await client.auth.getUser();
 
-      if (imageFile) {
-        const extensions = {
-          "image/jpeg": "jpg",
-          "image/png": "png",
-          "image/webp": "webp",
-          "image/gif": "gif"
-        };
+      if (userError) throw userError;
 
-        const path =
-          `${user.id}/${crypto.randomUUID()}.${extensions[imageFile.type]}`;
+      currentUser = userData.user;
 
-        const { error: uploadError } = await client.storage
-          .from("post-images")
-          .upload(path, imageFile, {
-            contentType: imageFile.type,
-            cacheControl: "3600",
-            upsert: false
-          });
+      if (!currentUser) {
+        throw new Error("Please sign in before creating a post.");
+      }
 
-        if (uploadError) throw uploadError;
-
-        imageUrl = client.storage
-          .from("post-images")
-          .getPublicUrl(path).data.publicUrl;
+      if (file) {
+        uploadedUrl = await uploadMedia(file);
       }
 
       const { error: insertError } = await client
         .from("posts")
         .insert({
-          user_id: user.id,
+          user_id: currentUser.id,
           caption,
-          image_url: imageUrl
+          image_url: uploadedUrl,
+          is_community: false
         });
 
       if (insertError) throw insertError;
 
       form.reset();
-      await loadPosts(user);
-      status.textContent = "Post published successfully!";
+      showStatus("Your personal post was saved.");
+      await loadPersonalPosts();
     } catch (error) {
-      console.error("My Feed error:", error);
-      status.textContent = "Could not publish/load posts: " + error.message;
+      console.error("My Feed publish error:", error);
+      showStatus(error.message || "Could not publish your post.", true);
     } finally {
+      isPublishing = false;
       publishButton.disabled = false;
     }
   });
 
-  async function init() {
-    try {
-      const user = await getUser();
-      await loadPosts(user);
-    } catch (error) {
-      console.error("My Feed initialization error:", error);
-      status.textContent = error.message;
-      feedList.replaceChildren();
+  async function initialize() {
+    const { data, error } = await client.auth.getUser();
+
+    if (error || !data.user) {
+      showStatus("Please sign in to view and create your personal posts.", true);
+      publishButton.disabled = true;
+      return;
     }
+
+    currentUser = data.user;
+    await loadPersonalPosts();
   }
 
-  init();
+  initialize();
 })();
