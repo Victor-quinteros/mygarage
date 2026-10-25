@@ -34,11 +34,13 @@
     return element;
   }
 
-  async function getUser() {
-    const { data, error } = await client.auth.getUser();
-    if (error) throw error;
-    return data.user;
-  }
+ async function getUser() {
+  const { data, error } = await client.auth.getSession();
+
+  if (error) throw error;
+
+  return data.session?.user ?? null;
+}
 
   async function loadCars() {
     list.replaceChildren();
