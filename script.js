@@ -153,22 +153,32 @@ function renderListings() {
 
 function renderProfile() {
   const profile = getProfile();
-const usernameInput = $("username");
 
-if (usernameInput) {
-  usernameInput.value =
-    profile.name === "Garage Member" ? "" : profile.name;
-}  $("bio").value = profile.bio === "Car enthusiast" ? "" : profile.bio;
-  $("profileSummary").innerHTML = `
-    <div class="post-head">
-      <div class="avatar">${escapeHTML(profile.name.charAt(0).toUpperCase())}</div>
-      <div>
-        <strong>${escapeHTML(profile.name)}</strong>
-        <p class="muted">${escapeHTML(profile.bio)}</p>
+  const usernameInput = $("username");
+  if (usernameInput) {
+    usernameInput.value =
+      profile.name === "Garage Member" ? "" : profile.name;
+  }
+
+  const bioInput = $("bio");
+  if (bioInput) {
+    bioInput.value =
+      profile.bio === "Car enthusiast" ? "" : profile.bio;
+  }
+
+  const profileSummary = $("profileSummary");
+  if (profileSummary) {
+    profileSummary.innerHTML = `
+      <div class="post-head">
+        <div class="avatar">${escapeHTML(profile.name.charAt(0).toUpperCase())}</div>
+        <div>
+          <strong>${escapeHTML(profile.name)}</strong>
+          <p class="muted">${escapeHTML(profile.bio)}</p>
+        </div>
       </div>
-    </div>
-    <p class="muted">${posts.filter(p => p.author === profile.name).length} posts · ${repairs.length} projects</p>
-  `;
+      <p class="muted">${posts.filter(p => p.author === profile.name).length} posts · ${repairs.length} projects</p>
+    `;
+  }
 }
 
 function renderMessages() {
