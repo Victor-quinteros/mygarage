@@ -149,17 +149,7 @@ function renderListings() {
     : `<p class="muted">No cars listed yet. Add your first listing above.</p>`;
 }
 
-function renderRepairs() {
-  $("repairs").innerHTML = repairs.length
-    ? repairs.map(project => `
-      <article class="post">
-        <p class="eyebrow green">GARAGE PROJECT</p>
-        <h3>${escapeHTML(project.title)}</h3>
-        <p>${escapeHTML(project.details || "Project details coming soon.")}</p>
-      </article>
-    `).join("")
-    : `<p class="muted">Your repair portfolio will appear here.</p>`;
-}
+
 
 function renderProfile() {
   const profile = getProfile();
@@ -404,6 +394,5 @@ $("messageForm").addEventListener("submit", event => {
 renderMembers();
 renderFeed();
 renderListings();
-renderRepairs();
 renderProfile();
 renderMessages();
