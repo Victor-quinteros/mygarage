@@ -73,7 +73,12 @@
         profile.display_name || profile.username
       );
 
-      
+       addTextElement(
+        card,
+        "p",
+        "@" + profile.username,
+        "member-username"
+      );
 
       if (profile.favorite_car) {
         addTextElement(
