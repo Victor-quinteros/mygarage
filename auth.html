@@ -118,8 +118,24 @@
         autocomplete="email" required>
 
       <label for="signup-password">Password (minimum 8 characters)</label>
-      <input id="signup-password" type="password"
-        minlength="8" autocomplete="new-password" required>
+
+<div class="password-wrapper">
+  <input
+    id="signup-password"
+    type="password"
+    minlength="8"
+    autocomplete="new-password"
+    required
+  >
+
+  <button
+    type="button"
+    class="toggle-password"
+    id="toggle-signup-password"
+    aria-label="Show password"
+    aria-pressed="false"
+  >👁️</button>
+</div>
 
       <button type="submit">Create Account</button>
     </form>
