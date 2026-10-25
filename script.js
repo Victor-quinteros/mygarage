@@ -399,13 +399,14 @@ async function publishPost(event) {
       mediaUrl = publicData.publicUrl;
     }
 
-    const { error: insertError } = await client
-      .from("posts")
-      .insert({
-        user_id: user.id,
-        caption: text,
-        image_url: mediaUrl
-      });
+   const { error: insertError } = await client
+  .from("posts")
+  .insert({
+    user_id: user.id,
+    caption: text,
+    image_url: mediaUrl,
+    is_community: true
+  });
 
     if (insertError) throw insertError;
 
