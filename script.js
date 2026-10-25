@@ -347,8 +347,9 @@ $("members").addEventListener("click", event => {
   notify(followed.has(name) ? `Following ${name}` : `Unfollowed ${name}`);
 });
 
-$("saveProfile").addEventListener("click", () => {
-  const name = $("username").value.trim();
+const saveProfileButton = $("saveProfile");
+
+if (saveProfileButton) saveProfileButton.addEventListener("click", () => {  const name = $("username").value.trim();
   const bio = $("bio").value.trim();
 
   if (!name) {
