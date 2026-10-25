@@ -543,32 +543,35 @@ button.auth-nav-link {
 }
 
 
+
 .password-wrapper {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .password-wrapper input {
   flex: 1;
+  width: 0;
   min-width: 0;
+  box-sizing: border-box;
 }
 
-.toggle-password {
-  cursor: pointer;
-  padding: 8px 10px;
+.password-wrapper .toggle-password {
+  flex: 0 0 48px;
+  min-width: 48px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
   border: 1px solid #303b33;
   border-radius: 8px;
   background: #111713;
   color: #39ff14;
-  font-size: 18px;
-}
-
-.car-card p {
-  white-space: pre-wrap;
-}
-
-#auth-link[hidden],
-#logout-btn[hidden] {
-  display: none !important;
+  font-size: 20px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
