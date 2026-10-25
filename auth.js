@@ -47,24 +47,25 @@ const client = window.garageSupabase;
 
     logoutBtn.disabled = false;
 
-    if (error) {
-      accountStatus.textContent = error.message;
-      return;
-    }
+   
+if (error) {
+  accountStatus.textContent = error.message;
+  return;
+}
 
-    updateAccount(null);
-  });
+updateAccount(null);
+});
 
-  db.auth.onAuthStateChange((_event, session) => {
-    updateAccount(session);
-  });
+client.auth.onAuthStateChange((_event, session) => {
+  updateAccount(session);
+});
 
-  db.auth.getSession().then(({ data, error }) => {
-    if (error) {
-      console.error("Could not restore login:", error);
-      return;
-    }
+client.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.error("Could not restore login:", error);
+    return;
+  }
 
-    updateAccount(data.session);
-  });
+  updateAccount(data.session);
+});
 })();
