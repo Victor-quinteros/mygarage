@@ -2,16 +2,23 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL = "https://ovooslmyfavrtlxazykq.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
-
- const client = window.garageSupabase;
+  const client = window.garageSupabase;
 
   const form = document.getElementById("carForm");
   const list = document.getElementById("carList");
   const message = document.getElementById("carMessage");
 
-  if (!form || !list || !message) return;
+  if (!form || !list || !message) {
+    console.error("Garage error: carForm, carList, or carMessage was not found.");
+    return;
+  }
+
+  if (!client) {
+    message.textContent =
+      "Supabase did not load. Check the script order in index.html.";
+    console.error("window.garageSupabase is undefined.");
+    return;
+  }
 
   const makeInput = document.getElementById("carMake");
   const modelInput = document.getElementById("carModel");
@@ -49,14 +56,20 @@
         return;
       }
 
-      const { data: userData } = await client.auth.getUser();
-      const currentUser = userData?.user;
+      const { data: userData, error: userError } =
+        await client.auth.getUser();
+
+      if (userError) throw userError;
+
+      const currentUser = userData.user;
 
       data.forEach((car) => {
         const card = document.createElement("article");
         card.className = "car-card";
 
-        const title = `${car.year ? car.year + " " : ""}${car.make} ${car.model}`;
+        const title =
+          `${car.year ? car.year + " " : ""}${car.make} ${car.model}`;
+
         addTextElement(card, "h3", title);
 
         if (car.description) {
@@ -64,7 +77,11 @@
         }
 
         if (car.modifications) {
-          addTextElement(card, "p", "Modifications: " + car.modifications);
+          addTextElement(
+            card,
+            "p",
+            "Modifications: " + car.modifications
+          );
         }
 
         if (currentUser && currentUser.id === car.user_id) {
@@ -78,20 +95,22 @@
 
             deleteButton.disabled = true;
 
-            const { error: deleteError } = await client
-              .from("cars")
-              .delete()
-              .eq("id", car.id)
-              .eq("user_id", currentUser.id);
+            try {
+              const { error: deleteError } = await client
+                .from("cars")
+                .delete()
+                .eq("id", car.id)
+                .eq("user_id", currentUser.id);
 
-            if (deleteError) {
-              message.textContent = "Could not delete car: " + deleteError.message;
+              if (deleteError) throw deleteError;
+
+              message.textContent = "Car deleted.";
+              await loadCars();
+            } catch (error) {
+              message.textContent =
+                "Could not delete car: " + error.message;
               deleteButton.disabled = false;
-              return;
             }
-
-            message.textContent = "Car deleted.";
-            await loadCars();
           });
 
           card.appendChild(deleteButton);
@@ -102,14 +121,18 @@
     } catch (error) {
       console.error("Loading cars failed:", error);
       list.replaceChildren();
-      addTextElement(list, "p", "Could not load cars: " + error.message);
+      addTextElement(
+        list,
+        "p",
+        "Could not load cars: " + error.message
+      );
     }
   }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    submitButton.disabled = true;
+    if (submitButton) submitButton.disabled = true;
     message.textContent = "Saving your car...";
 
     try {
@@ -128,8 +151,11 @@
         throw new Error("Please enter the car's make and model.");
       }
 
-      if (year !== null && (!Number.isInteger(year) || year < 1886 || year > 2100)) {
-        throw new Error("Please enter a valid year between 1886 and 2100.");
+      if (
+        year !== null &&
+        (!Number.isInteger(year) || year < 1886 || year > 2100)
+      ) {
+        throw new Error("Enter a valid year between 1886 and 2100.");
       }
 
       const { error } = await client.from("cars").insert({
@@ -150,7 +176,7 @@
       console.error("Saving car failed:", error);
       message.textContent = "Could not save car: " + error.message;
     } finally {
-      submitButton.disabled = false;
+      if (submitButton) submitButton.disabled = false;
     }
   });
 
@@ -160,12 +186,14 @@
 
       if (!user) {
         message.textContent = "Log in to add cars to your garage.";
-        submitButton.disabled = true;
+        if (submitButton) submitButton.disabled = true;
       }
 
       await loadCars();
     } catch (error) {
-      message.textContent = "Could not check login: " + error.message;
+      console.error("Garage initialization failed:", error);
+      message.textContent =
+        "Could not check login: " + error.message;
       list.replaceChildren();
     }
   }
