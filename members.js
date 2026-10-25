@@ -25,7 +25,7 @@
 
   function addTextElement(parent, tag, text, className) {
     const element = document.createElement(tag);
-    element.textContent = text;
+    element.textContent = text ?? "";
 
     if (className) {
       element.className = className;
@@ -33,6 +33,45 @@
 
     parent.appendChild(element);
     return element;
+  }
+
+  function addAvatar(parent, profile, isDetail = false) {
+    const avatar = document.createElement("img");
+    const name = profile.display_name || profile.username || "Member";
+    const initial = name.trim().charAt(0).toUpperCase() || "?";
+
+    avatar.className = isDetail
+      ? "member-detail-avatar"
+      : "member-avatar";
+
+    avatar.alt = name + "'s profile picture";
+    avatar.loading = "lazy";
+
+    // Show a simple fallback if the member has no picture.
+    function showFallback() {
+      const fallback = document.createElement("div");
+      fallback.className = avatar.className + " member-avatar-fallback";
+      fallback.setAttribute("role", "img");
+      fallback.setAttribute("aria-label", "No profile picture");
+      fallback.textContent = initial;
+      avatar.replaceWith(fallback);
+    }
+
+    if (!profile.avatar_url) {
+      showFallback();
+      return;
+    }
+
+    avatar.src = profile.avatar_url;
+
+    avatar.addEventListener("error", () => {
+      // Prevent a broken image from being shown.
+      if (avatar.isConnected) {
+        showFallback();
+      }
+    }, { once: true });
+
+    parent.appendChild(avatar);
   }
 
   function renderDirectory() {
@@ -67,13 +106,15 @@
         "members.html?username=" +
         encodeURIComponent(profile.username);
 
+      addAvatar(card, profile);
+
       addTextElement(
         card,
         "h2",
         profile.display_name || profile.username
       );
 
-       addTextElement(
+      addTextElement(
         card,
         "p",
         "@" + profile.username,
@@ -105,7 +146,7 @@
 
     const { data, error } = await client
       .from("profiles")
-      .select("username, display_name, bio, favorite_car")
+      .select("username, display_name, bio, favorite_car, avatar_url")
       .not("username", "is", null)
       .order("username");
 
@@ -124,14 +165,13 @@
     directoryView.hidden = true;
     memberView.hidden = false;
     detailMessage.textContent = "Loading profile...";
+    detail.replaceChildren();
 
     const { data, error } = await client
       .from("profiles")
-      .select("username, display_name, bio, favorite_car")
+      .select("username, display_name, bio, favorite_car, avatar_url")
       .eq("username", username)
       .maybeSingle();
-
-    detail.replaceChildren();
 
     if (error) {
       console.error("Could not load profile:", error);
@@ -146,6 +186,8 @@
       return;
     }
 
+    addAvatar(detail, data, true);
+
     addTextElement(
       detail,
       "h2",
@@ -159,11 +201,7 @@
       "member-username"
     );
 
-    addTextElement(
-      detail,
-      "h3",
-      "About"
-    );
+    addTextElement(detail, "h3", "About");
 
     addTextElement(
       detail,
@@ -171,11 +209,7 @@
       data.bio || "This member hasn't added a bio yet."
     );
 
-    addTextElement(
-      detail,
-      "h3",
-      "Favorite car"
-    );
+    addTextElement(detail, "h3", "Favorite car");
 
     addTextElement(
       detail,
@@ -198,3 +232,4 @@
     loadDirectory();
   }
 })();
+
