@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>My Profile | GARAGE</title>
-
   <link rel="stylesheet" href="style.css">
 
   <style>
@@ -26,11 +25,27 @@
       margin-bottom: 28px;
     }
 
-    #my-feed {
-  scroll-margin-top: 24px;
-}
+    .profile-navigation {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 16px;
+    }
 
-    /* Profile picture */
+    .profile-navigation a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .profile-navigation a:hover {
+      color: #39ff14;
+    }
+
+    #profile-form {
+      display: grid;
+      gap: 12px;
+    }
+
     .avatar-section {
       display: flex;
       flex-direction: column;
@@ -40,29 +55,13 @@
     }
 
     .avatar-preview {
+      display: block;
       width: 120px;
       height: 120px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: #151515;
       border: 2px solid #39ff14;
-      display: block;
-    }
-
-    .avatar-upload-label {
-      display: inline-block;
-      padding: 10px 16px;
-      border: 1px solid #39ff14;
-      border-radius: 8px;
-      color: #39ff14;
-      font-weight: bold;
-      cursor: pointer;
-      text-align: center;
-    }
-
-    .avatar-upload-label:hover {
-      background: #39ff14;
-      color: #080808;
+      border-radius: 50%;
+      background: #151515;
+      object-fit: cover;
     }
 
     #avatar-file {
@@ -77,32 +76,43 @@
       border: 0;
     }
 
+    .avatar-upload-label {
+      display: inline-block;
+      padding: 10px 16px;
+      border: 1px solid #39ff14;
+      border-radius: 8px;
+      color: #39ff14;
+      font-weight: bold;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .avatar-upload-label:hover {
+      background: #39ff14;
+      color: #080808;
+    }
+
     #avatar-file:focus-visible + .avatar-upload-label {
       outline: 2px solid white;
       outline-offset: 3px;
     }
 
     .avatar-help {
+      margin: 0;
       color: #aaa;
       font-size: 0.85rem;
       text-align: center;
-      margin: 0;
-    }
-
-    #profile-form {
-      display: grid;
-      gap: 12px;
     }
 
     #profile-form label:not(.avatar-upload-label) {
-      font-weight: 600;
       margin-top: 8px;
+      font-weight: 600;
     }
 
     #profile-form input:not([type="file"]),
     #profile-form textarea {
-      width: 100%;
       box-sizing: border-box;
+      width: 100%;
       padding: 12px;
       border: 1px solid #333;
       border-radius: 8px;
@@ -142,138 +152,6 @@
       margin-top: 12px;
       overflow-wrap: anywhere;
     }
-    
-/* MY FEED */
-.my-feed {
-  margin-top: 48px;
-  padding-top: 28px;
-  border-top: 1px solid #333;
-}
-
-.my-feed h2 {
-  font-size: 1.8rem;
-  margin-bottom: 8px;
-}
-
-.feed-intro {
-  color: #aaa;
-  margin-bottom: 22px;
-}
-
-#post-form {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 12px;
-}
-
-#post-caption {
-  width: 100%;
-  min-height: 110px;
-  box-sizing: border-box;
-  padding: 12px;
-  resize: vertical;
-  border: 1px solid #333;
-  border-radius: 8px;
-  background: #151515;
-  color: white;
-  font: inherit;
-}
-
-#post-caption:focus {
-  outline: 1px solid #39ff14;
-}
-
-#post-image {
-  max-width: 100%;
-  color: #bbb;
-}
-
-#post-form button {
-  padding: 12px;
-  border: 0;
-  border-radius: 8px;
-  background: #39ff14;
-  color: #080808;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-#post-form button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-#feed-status {
-  color: #aaa;
-  overflow-wrap: anywhere;
-}
-
-.feed-list {
-  display: grid;
-  gap: 18px;
-  margin-top: 24px;
-}
-
-.feed-post {
-  min-width: 0;
-  padding: 18px;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 12px;
-  overflow-wrap: anywhere;
-}
-
-.feed-post-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.feed-post-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: #222;
-  border: 1px solid #39ff14;
-}
-
-.feed-post-author {
-  margin: 0;
-  font-weight: bold;
-}
-
-.feed-post-date {
-  margin: 4px 0 0;
-  color: #999;
-  font-size: 0.8rem;
-}
-
-.feed-post-caption {
-  white-space: pre-wrap;
-  line-height: 1.6;
-}
-
-.feed-post-image {
-  display: block;
-  width: 100%;
-  max-height: 520px;
-  margin-top: 14px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #080808;
-}
-
-.feed-empty {
-  color: #999;
-  text-align: center;
-  padding: 24px 12px;
-}
-
   </style>
 </head>
 
@@ -284,7 +162,11 @@
       GARAGE<span class="green">.</span>
     </a>
 
-    <a href="index.html" class="auth-nav-link">Home</a>
+    <nav class="profile-navigation" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="feed.html">My Feed</a>
+      <a href="members.html">Members</a>
+    </nav>
   </header>
 
   <main class="profile-page">
@@ -295,7 +177,6 @@
     </p>
 
     <form id="profile-form">
-      <!-- Profile picture -->
       <div class="avatar-section">
         <img
           id="avatar-preview"
@@ -324,6 +205,7 @@
       <label for="username">Username</label>
       <input
         id="username"
+        name="username"
         type="text"
         minlength="3"
         maxlength="24"
@@ -335,6 +217,7 @@
       <label for="display-name">Display name</label>
       <input
         id="display-name"
+        name="display-name"
         type="text"
         maxlength="40"
         placeholder="What should people call you?"
@@ -343,6 +226,7 @@
       <label for="bio">About you</label>
       <textarea
         id="bio"
+        name="bio"
         maxlength="300"
         placeholder="Tell the community about yourself..."
       ></textarea>
@@ -350,6 +234,7 @@
       <label for="favorite-car">Favorite car</label>
       <input
         id="favorite-car"
+        name="favorite-car"
         type="text"
         maxlength="80"
         placeholder="e.g. Nissan Skyline R34"
@@ -363,53 +248,11 @@
         aria-live="polite"
       ></p>
     </form>
-    
-<section class="my-feed" id="my-feed">
-  <h2>MY <span class="green">FEED</span></h2>
-
-  <p class="feed-intro">
-    Share your builds, photos, and updates with the GARAGE community.
-  </p>
-
-  <form id="post-form">
-    <label for="post-caption">What's happening in your garage?</label>
-
-    <textarea
-      id="post-caption"
-      maxlength="2000"
-      placeholder="Show off your latest build..."
-    ></textarea>
-
-    <label for="post-image">Add a photo (optional)</label>
-
-    <input
-      id="post-image"
-      type="file"
-      accept="image/jpeg,image/png,image/webp,image/gif"
-    />
-
-    <p class="avatar-help">
-      JPG, PNG, WebP or GIF. Maximum 5 MB.
-    </p>
-
-    <button type="submit" id="publish-post-button">
-      POST
-    </button>
-
-    <p id="feed-status" role="status" aria-live="polite"></p>
-  </form>
-
-  <div id="feed-list" class="feed-list">
-    <p class="feed-empty">Your posts will appear here.</p>
-  </div>
-</section>
-
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="profile.js"></script>
 
-  <!-- Local preview only; persistent uploading is handled by profile.js. -->
   <script>
     (() => {
       const input = document.getElementById("avatar-file");
@@ -419,7 +262,7 @@
       let previewUrl = "";
 
       input.addEventListener("change", () => {
-        const file = input.files && input.files[0];
+        const file = input.files?.[0];
 
         if (previewUrl) {
           URL.revokeObjectURL(previewUrl);
@@ -437,22 +280,30 @@
 
         if (!allowedTypes.includes(file.type)) {
           input.value = "";
-          status.textContent = "Choose a JPG, PNG, WebP or GIF image.";
+          status.textContent =
+            "Choose a JPG, PNG, WebP or GIF image.";
           return;
         }
 
         if (file.size > 2 * 1024 * 1024) {
           input.value = "";
-          status.textContent = "Your image must be 2 MB or smaller.";
+          status.textContent =
+            "Your image must be 2 MB or smaller.";
           return;
         }
 
         previewUrl = URL.createObjectURL(file);
         preview.src = previewUrl;
-        status.textContent = "Preview ready. Save your profile to upload it.";
+        status.textContent =
+          "Preview ready. Save your profile to upload it.";
+      });
+
+      window.addEventListener("beforeunload", () => {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
       });
     })();
   </script>
 </body>
 </html>
-```
