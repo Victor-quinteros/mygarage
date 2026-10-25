@@ -182,23 +182,26 @@
     }
   });
 
-  async function initialize() {
-    try {
-      const user = await getUser();
+ async function initialize() {
+  try {
+    const user = await getUser();
 
-      if (!user) {
-        message.textContent = "Log in to add cars to your garage.";
-        if (submitButton) submitButton.disabled = true;
+    if (!user) {
+      if (message) {
+        message.textContent = "Please log in to add a car.";
       }
 
-      await loadCars();
-    } catch (error) {
-      console.error("Garage initialization failed:", error);
-      message.textContent =
-        "Could not check login: " + error.message;
-      list.replaceChildren();
+      return;
+    }
+
+    await loadCars(user);
+  } catch (error) {
+    console.error("Garage initialization failed:", error);
+
+    if (message) {
+      message.textContent = error.message;
     }
   }
-
+}
   initialize();
 })();
