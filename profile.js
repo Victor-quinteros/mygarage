@@ -25,7 +25,64 @@
   const displayNameInput = document.getElementById("display-name");
   const bioInput = document.getElementById("bio");
   const favoriteCarInput = document.getElementById("favorite-car");
+  const avatarInput = document.getElementById("avatar-file");
+  const avatarPreview = document.getElementById("avatar-preview");
   const saveButton = form.querySelector('button[type="submit"]');
+
+  const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+  const ALLOWED_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif"
+  ];
+
+  let currentAvatarUrl = "";
+  let selectedAvatar = null;
+  let previewObjectUrl = null;
+
+  function setAvatarPreview(url) {
+    if (!avatarPreview || !url) return;
+    avatarPreview.src = url;
+  }
+
+  if (avatarInput) {
+    avatarInput.addEventListener("change", () => {
+      const file = avatarInput.files?.[0];
+
+      selectedAvatar = null;
+
+      if (!file) return;
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        avatarInput.value = "";
+        status.textContent =
+          "Please choose a JPG, PNG, WebP, or GIF image.";
+        return;
+      }
+
+      if (file.size > MAX_AVATAR_SIZE) {
+        avatarInput.value = "";
+        status.textContent =
+          "Your profile picture must be 2 MB or smaller.";
+        return;
+      }
+
+      selectedAvatar = file;
+
+      if (avatarPreview) {
+        if (previewObjectUrl) {
+          URL.revokeObjectURL(previewObjectUrl);
+        }
+
+        previewObjectUrl = URL.createObjectURL(file);
+        setAvatarPreview(previewObjectUrl);
+      }
+
+      status.textContent =
+        "Picture selected. Save your profile to upload it.";
+    });
+  }
 
   async function loadProfile() {
     status.textContent = "Checking your login...";
@@ -45,7 +102,9 @@
 
       const { data, error } = await client
         .from("profiles")
-        .select("username, display_name, bio, favorite_car")
+        .select(
+          "username, display_name, bio, favorite_car, avatar_url"
+        )
         .eq("id", user.id)
         .maybeSingle();
 
@@ -57,10 +116,17 @@
         bioInput.value = data.bio || "";
         favoriteCarInput.value = data.favorite_car || "";
 
+        currentAvatarUrl = data.avatar_url || "";
+
+        if (currentAvatarUrl) {
+          setAvatarPreview(currentAvatarUrl);
+        }
+
         status.textContent = "Your profile is loaded.";
       } else {
         displayNameInput.value =
           user.user_metadata?.display_name || "";
+
         status.textContent =
           "Welcome! Complete your profile and save it.";
       }
@@ -92,7 +158,43 @@
       } = await client.auth.getUser();
 
       if (authError || !user) {
-        throw new Error("Please log in before saving your profile.");
+        throw new Error(
+          "Please log in before saving your profile."
+        );
+      }
+
+      // Upload the picture only when a new one was selected.
+      if (selectedAvatar) {
+        const extensionByType = {
+          "image/jpeg": "jpg",
+          "image/png": "png",
+          "image/webp": "webp",
+          "image/gif": "gif"
+        };
+
+        const extension = extensionByType[selectedAvatar.type];
+
+        if (!extension) {
+          throw new Error("Unsupported profile picture format.");
+        }
+
+        const filePath = `${user.id}/avatar.${extension}`;
+
+        const { error: uploadError } = await client.storage
+          .from("avatars")
+          .upload(filePath, selectedAvatar, {
+            upsert: true,
+            contentType: selectedAvatar.type,
+            cacheControl: "3600"
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = client.storage
+          .from("avatars")
+          .getPublicUrl(filePath);
+
+        currentAvatarUrl = publicUrlData.publicUrl;
       }
 
       const profile = {
@@ -101,6 +203,7 @@
         display_name: displayNameInput.value.trim(),
         bio: bioInput.value.trim(),
         favorite_car: favoriteCarInput.value.trim(),
+        avatar_url: currentAvatarUrl || null,
         updated_at: new Date().toISOString()
       };
 
@@ -117,6 +220,9 @@
 
         throw error;
       }
+
+      selectedAvatar = null;
+      if (avatarInput) avatarInput.value = "";
 
       status.textContent = "Profile saved successfully!";
     } catch (error) {
