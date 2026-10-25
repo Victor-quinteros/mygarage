@@ -142,10 +142,13 @@ async function loadCommunityPosts() {
 
   feed.innerHTML = `<p class="muted">Loading community posts...</p>`;
 
-  const { data, error } = await client
-    .from("posts")
-    .select("id, user_id, caption, image_url, created_at")
-    .order("created_at", { ascending: false });
+  
+const { data, error } = await client
+  .from("posts")
+  .select("id, user_id, caption, image_url, created_at")
+  .eq("is_community", true)
+  .order("created_at", { ascending: false });
+
 
   if (error) {
     console.error("Could not load posts:", error.message);
