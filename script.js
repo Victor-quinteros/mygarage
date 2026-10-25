@@ -367,23 +367,6 @@ if (saveProfileButton) saveProfileButton.addEventListener("click", () => {  cons
   notify("Profile saved on this device.");
 });
 
-$("carForm").addEventListener("submit", event => {
-  event.preventDefault();
-
-  const name = $("carName").value.trim();
-  const price = Number($("carPrice").value);
-  if (!name || !Number.isFinite(price) || price < 0) return;
-
-  listings.unshift({
-    name,
-    price,
-    details: $("carDetails").value.trim()
-  });
-
-  event.target.reset();
-  renderListings();
-  notify("Car listing added!");
-});
 
 
 
