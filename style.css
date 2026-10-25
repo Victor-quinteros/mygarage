@@ -611,3 +611,12 @@ a.nav:focus {
   text-decoration: none;
 }
 
+a.nav {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  font: inherit;
+}
