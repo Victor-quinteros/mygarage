@@ -600,3 +600,14 @@ a.nav {
   color: inherit;
   font: inherit;
 }
+
+
+a.nav {
+  text-decoration: none;
+}
+
+a.nav:hover,
+a.nav:focus {
+  text-decoration: none;
+}
+
