@@ -575,3 +575,18 @@ button.auth-nav-link {
   cursor: pointer;
   touch-action: manipulation;
 }
+
+
+.password-wrapper .toggle-password {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 48px;
+  min-width: 48px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+}
