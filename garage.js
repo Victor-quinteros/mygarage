@@ -5,10 +5,7 @@
   const SUPABASE_URL = "https://ovooslmyfavrtlxazykq.supabase.co";
   const SUPABASE_KEY = "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
 
-  const client = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
+ const client = window.garageSupabase;
 
   const form = document.getElementById("carForm");
   const list = document.getElementById("carList");
