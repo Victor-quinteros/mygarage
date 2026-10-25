@@ -19,11 +19,10 @@
     return;
   }
 
-const client = window.garageSupabase;
-  SUPABASE_URL,
-    SUPABASE_KEY
-  );
 
+const client = window.garageSupabase;
+
+  
   function updateAccount(session) {
     if (session?.user) {
       const name =
