@@ -381,8 +381,9 @@ $("carForm").addEventListener("submit", event => {
   notify("Car listing added!");
 });
 
-$("repairForm").addEventListener("submit", event => {
-  event.preventDefault();
+const repairForm = $("repairForm");
+
+if (repairForm) repairForm.addEventListener("submit", event => {  event.preventDefault();
 
   repairs.unshift({
     title: $("repairTitle").value.trim(),
