@@ -43,8 +43,7 @@ const client = window.garageSupabase;
   logoutBtn.addEventListener("click", async () => {
     logoutBtn.disabled = true;
 
-    const { error } = await db.auth.signOut();
-
+const { error } = await client.auth.signOut();
     logoutBtn.disabled = false;
 
    
