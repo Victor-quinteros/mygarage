@@ -542,6 +542,28 @@ button.auth-nav-link {
   margin-top: 0;
 }
 
+
+.password-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-wrapper input {
+  flex: 1;
+  min-width: 0;
+}
+
+.toggle-password {
+  cursor: pointer;
+  padding: 8px 10px;
+  border: 1px solid #303b33;
+  border-radius: 8px;
+  background: #111713;
+  color: #39ff14;
+  font-size: 18px;
+}
+
 .car-card p {
   white-space: pre-wrap;
 }
