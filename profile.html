@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,121 +26,73 @@
       margin-bottom: 28px;
     }
 
+    /* Profile picture */
+    .avatar-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .avatar-preview {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #151515;
+      border: 2px solid #39ff14;
+      display: block;
+    }
+
+    .avatar-upload-label {
+      display: inline-block;
+      padding: 10px 16px;
+      border: 1px solid #39ff14;
+      border-radius: 8px;
+      color: #39ff14;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .avatar-upload-label:hover {
+      background: #39ff14;
+      color: #080808;
+    }
+
+    #avatar-file {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    #avatar-file:focus-visible + .avatar-upload-label {
+      outline: 2px solid white;
+      outline-offset: 3px;
+    }
+
+    .avatar-help {
+      color: #aaa;
+      font-size: 0.85rem;
+      text-align: center;
+      margin: 0;
+    }
+
     #profile-form {
       display: grid;
       gap: 12px;
     }
 
-    #profile-form label {
+    #profile-form label:not(.avatar-upload-label) {
       font-weight: 600;
       margin-top: 8px;
     }
 
-    #profile-form input,
-    #profile-form textarea {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px;
-      border: 1px solid #333;
-      border-radius: 8px;
-      background: #151515;
-      color: white;
-      font: inherit;
-    }
-
-    #profile-form input:focus,
-    #profile-form textarea:focus {
-      outline: 1px solid #39ff14;
-      border-color: #39ff14;
-    }
-
-    #profile-form textarea {
-      min-height: 110px;
-      resize: vertical;
-    }
-
-    #profile-form button {
-      margin-top: 16px;
-      padding: 13px;
-      border: none;
-      border-radius: 8px;
-      background: #39ff14;
-      color: #080808;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    #profile-form button:disabled {
-      opacity: 0.6;
-      cursor: wait;
-    }
-
-    #profile-status {
-      margin-top: 12px;
-      overflow-wrap: anywhere;
-    }
-  </style>
-</head>
-
-<body>
-  <header class="topbar">
-    <a class="brand" href="index.html">
-      <span class="brand-icon">G</span>
-      GARAGE<span class="green">.</span>
-    </a>
-
-    <a href="index.html" class="auth-nav-link">Home</a>
-  </header>
-
-  <main class="profile-page">
-    <h1>MY <span class="green">PROFILE</span></h1>
-
-    <p class="profile-intro">
-      Build your identity in the GARAGE community.
-    </p>
-
-    <form id="profile-form">
-      <label for="username">Username</label>
-      <input
-        id="username"
-        type="text"
-        minlength="3"
-        maxlength="24"
-        placeholder="e.g. boostking"
-        autocomplete="username"
-        required
-      >
-
-      <label for="display-name">Display name</label>
-      <input
-        id="display-name"
-        type="text"
-        maxlength="40"
-        placeholder="What should people call you?"
-      >
-
-      <label for="bio">About you</label>
-      <textarea
-        id="bio"
-        maxlength="300"
-        placeholder="Tell the community about yourself..."
-      ></textarea>
-
-      <label for="favorite-car">Favorite car</label>
-      <input
-        id="favorite-car"
-        type="text"
-        maxlength="80"
-        placeholder="e.g. Nissan Skyline R34"
-      >
-
-      <button type="submit">Save Profile</button>
-
-      <p id="profile-status" role="status" aria-live="polite"></p>
-    </form>
-  </main>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="profile.js"></script>
-</body>
-</html>
+    #profile-form input
