@@ -64,6 +64,25 @@
   }
 
   // SIGN UP
+
+  
+const signupPassword = document.getElementById("signup-password");
+const toggleSignupPassword = document.getElementById("toggle-signup-password");
+
+if (signupPassword && toggleSignupPassword) {
+  toggleSignupPassword.addEventListener("click", () => {
+    const showing = signupPassword.type === "text";
+
+    signupPassword.type = showing ? "password" : "text";
+    toggleSignupPassword.textContent = showing ? "👁️" : "🙈";
+    toggleSignupPassword.setAttribute(
+      "aria-label",
+      showing ? "Show password" : "Hide password"
+    );
+    toggleSignupPassword.setAttribute("aria-pressed", String(!showing));
+  });
+}
+
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
