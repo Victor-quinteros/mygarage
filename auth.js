@@ -19,8 +19,8 @@
     return;
   }
 
-  const db = window.supabase.createClient(
-    SUPABASE_URL,
+const client = window.garageSupabase;
+  SUPABASE_URL,
     SUPABASE_KEY
   );
 
