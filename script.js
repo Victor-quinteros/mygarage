@@ -759,48 +759,176 @@ function setupFeedInteractions() {
    Messages are temporary and are not saved to Supabase.
 ========================================================= */
 
-function renderMessages() {
-  const recipient = $("messageTo")?.value.trim() || "";
-  const conversationElement = $("conversation");
 
-  if (!conversationElement) return;
+/* =========================================================
+   10. SUPABASE PRIVATE MESSAGES
+========================================================= */
 
-  const conversation = messages[recipient] || [];
+let activeConversationId = null;
+let messageBusy = false;
 
-  conversationElement.innerHTML = conversation.length
-    ? conversation.map((message) => `
-        <div class="message">
-          <strong>${escapeHTML(message.from)}:</strong>
-          ${escapeHTML(message.text)}
-        </div>
+async function getSignedInUser() {
+  if (!client?.auth) return null;
+
+  const { data, error } = await client.auth.getUser();
+
+  if (error) {
+    console.error("GARAGE auth error:", error.message);
+    return null;
+  }
+
+  return data.user || null;
+}
+
+async function loadConversation() {
+  const conversation = $("conversation");
+  const recipientInput = $("messageTo");
+
+  if (!conversation || !recipientInput) return;
+
+  const user = await getSignedInUser();
+
+  if (!user) {
+    conversation.innerHTML =
+      '<p class="muted">Sign in to use private messages.</p>';
+    return;
+  }
+
+  const recipientId = recipientInput.value.trim();
+
+  if (!recipientId) {
+    conversation.innerHTML =
+      '<p class="muted">Choose a member to open a conversation.</p>';
+    return;
+  }
+
+  if (recipientId === user.id) {
+    conversation.innerHTML =
+      '<p class="muted">You cannot message yourself.</p>';
+    return;
+  }
+
+  activeConversationId = recipientId;
+  conversation.innerHTML =
+    '<p class="muted">Loading conversation...</p>';
+
+  const { data, error } = await client
+    .from("messages")
+    .select("id, sender_id, recipient_id, content, created_at, read_at")
+    .or(
+      `and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),` +
+      `and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`
+    )
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("GARAGE message load error:", error.message);
+    conversation.innerHTML =
+      '<p class="muted">Could not load messages. Check your database policies.</p>';
+    return;
+  }
+
+  if (activeConversationId !== recipientId) return;
+
+  const messages = data || [];
+
+  conversation.innerHTML = messages.length
+    ? messages.map(message => `
+        <article class="message ${
+          message.sender_id === user.id ? "message-own" : "message-incoming"
+        }">
+          <p>${escapeHTML(message.content).replace(/\n/g, "<br>")}</p>
+          <small class="muted">
+            ${message.sender_id === user.id ? "You" : "Member"}
+            · ${escapeHTML(formatDate(message.created_at))}
+            ${message.sender_id === user.id && message.read_at ? " · Read" : ""}
+          </small>
+        </article>
       `).join("")
-    : `<p class="muted">No messages in this demo conversation.</p>`;
+    : '<p class="muted">No messages yet. Say hello!</p>';
+
+  // Mark messages received from this member as read.
+  const unreadIds = messages
+    .filter(message =>
+      message.recipient_id === user.id && !message.read_at
+    )
+    .map(message => message.id);
+
+  if (unreadIds.length) {
+    const { error: readError } = await client
+      .from("messages")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", unreadIds);
+
+    if (readError) {
+      console.warn("GARAGE read-status update:", readError.message);
+    }
+  }
+
+  conversation.scrollTop = conversation.scrollHeight;
 }
 
 function setupMessages() {
-  $("messageTo")?.addEventListener("input", renderMessages);
+  $("messageTo")?.addEventListener("change", loadConversation);
 
-  $("messageForm")?.addEventListener("submit", (event) => {
+  $("messageForm")?.addEventListener("submit", async event => {
     event.preventDefault();
 
-    const recipient = $("messageTo")?.value.trim() || "";
-    const text = $("messageText")?.value.trim() || "";
+    if (messageBusy) return;
 
-    if (!recipient || !text) return;
+    const user = await getSignedInUser();
+    if (!user) {
+      notify("Please sign in to send private messages.");
+      window.location.href = "auth.html";
+      return;
+    }
 
-    if (!messages[recipient]) messages[recipient] = [];
+    const recipientId = $("messageTo")?.value.trim() || "";
+    const content = $("messageText")?.value.trim() || "";
 
-    messages[recipient].push({
-      from: getCurrentDisplayName(),
-      text
-    });
+    if (!recipientId || !content) {
+      notify("Choose a recipient and enter a message.");
+      return;
+    }
 
-    if ($("messageText")) $("messageText").value = "";
+    if (recipientId === user.id) {
+      notify("You cannot message yourself.");
+      return;
+    }
 
-    renderMessages();
-    notify("Demo message added. It is not saved to Supabase.");
+    if (content.length > 5000) {
+      notify("Messages must be 5,000 characters or less.");
+      return;
+    }
+
+    messageBusy = true;
+    const submitButton = $("messageForm")
+      ?.querySelector('button[type="submit"]');
+
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+      const { error } = await client.from("messages").insert({
+        sender_id: user.id,
+        recipient_id: recipientId,
+        content
+      });
+
+      if (error) throw error;
+
+      $("messageText").value = "";
+      await loadConversation();
+      notify("Message sent.");
+    } catch (error) {
+      console.error("GARAGE send message error:", error.message);
+      notify(error.message || "Could not send the message.");
+    } finally {
+      messageBusy = false;
+      if (submitButton) submitButton.disabled = false;
+    }
   });
 }
+
 /* =========================================================
    11. HOMEPAGE NAVIGATION AND SEARCH
 ========================================================= */
