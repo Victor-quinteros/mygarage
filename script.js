@@ -348,17 +348,25 @@
 
     feed.innerHTML = "<p>Loading community posts…</p>";
 
-    const { data, error } = await client
-      .from("posts")
-      .select(`
-        id, user_id, content, media_url, media_type, created_at,
-        profiles:user_id (id, username, display_name, avatar_url),
-        likes (user_id),
-        comments (id, user_id, content, created_at,
-          profiles:user_id (username, display_name))
-      `)
-      .order("created_at", { ascending: false })
-      .limit(100);
+   const { data, error } = await client
+  .from("posts")
+  .select(`
+    id,
+    user_id,
+    content,
+    media_url,
+    media_type,
+    created_at,
+    likes(user_id),
+    comments(
+      id,
+      user_id,
+      content,
+      created_at
+    )
+  `)
+  .order("created_at", { ascending: false })
+  .limit(100);
 
     if (error) {
       console.error("GARAGE feed:", error);
