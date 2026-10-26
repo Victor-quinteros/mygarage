@@ -1,0 +1,54 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join GARAGE</title>
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <main class="auth-card">
+    <a class="brand" href="index.html">GARAGE<span>.</span></a>
+    <h1>Join the community</h1>
+    <p class="subtitle">Create your GARAGE member account.</p>
+
+    <form id="signup-form">
+      <label for="signup-username">Username</label>
+      <input id="signup-username" type="text"
+        minlength="3" maxlength="24"
+        pattern="[A-Za-z0-9_]+"
+        autocomplete="username"
+        placeholder="e.g. RoadKing" required>
+      <small>3–24 letters, numbers, or underscores.</small>
+
+      <label for="signup-display-name">Display name</label>
+      <input id="signup-display-name" type="text"
+        maxlength="50" autocomplete="name" required>
+
+      <label for="signup-email">Email</label>
+      <input id="signup-email" type="email"
+        autocomplete="email" required>
+
+      <label for="signup-password">Password</label>
+      <input id="signup-password" type="password"
+        minlength="8" autocomplete="new-password" required>
+      <small>Use at least 8 characters.</small>
+
+      <button type="submit" id="signup-button">
+        Create account
+      </button>
+      <p id="signup-message" class="message" role="status"></p>
+    </form>
+
+    <p class="switch-link">
+      Already a member? <a href="login.html">Log in</a>
+    </p>
+    <a class="back-link" href="index.html">← Back to GARAGE</a>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script src="auth-pages.js"></script>
+</body>
+</html>
