@@ -2,15 +2,18 @@
 /* =========================================================
    GARAGE — COMPLETE MAIN WEBSITE SCRIPT
    ---------------------------------------------------------
-   Features:
-   1. Supabase authentication and profiles
-   2. Public community feed
-   3. Photo and video uploads
-   4. Private Supabase messaging
-   5. Registered-member selector and direct conversations
-   6. Message read status
-   7. Search, navigation, and media previews
-   8. Demo likes, comments, follows, and marketplace
+   REAL SUPABASE FEATURES:
+   - Authentication and profile loading
+   - Public community feed
+   - Photo and video uploads
+   - Persistent likes and comments
+   - Private member-to-member messaging
+   - Message history and read status
+   - Search, navigation, and media previews
+
+   DEMO FEATURES (not saved to Supabase):
+   - Follows
+   - Marketplace listings
 ========================================================= */
 
 "use strict";
@@ -30,21 +33,23 @@ const demoMembers = [
 
 let listings = [];
 let followed = new Set();
-let localLikes = new Set();
-let localComments = {};
 
-let toastTimer = null;
 let communityPosts = [];
 let currentUser = null;
 let currentProfile = null;
 
+let likedPostIds = new Set();
+let postLikeCounts = {};
+let postComments = {};
+
+let toastTimer = null;
 let selectedMedia = null;
 let mediaPreviewUrl = "";
 let isPublishingPost = false;
 
-let activeConversationId = null;
 let messageBusy = false;
 let messageLoadNumber = 0;
+let activeConversationId = null;
 
 /* =========================================================
    2. GENERAL HELPERS
@@ -125,6 +130,11 @@ function setButtonBusy(button, busy, busyText, idleText) {
   button.textContent = busy ? busyText : idleText;
 }
 
+function makeUniqueId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function getFileExtension(file) {
   const extensions = {
     "image/jpeg": "jpg",
@@ -143,12 +153,17 @@ function isVideoUrl(url) {
   return /\.(mp4|webm|mov)(\?[^#]*)?(#.*)?$/i.test(url || "");
 }
 
-function makeUniqueId() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
+async function getSignedInUser() {
+  if (!client?.auth) return null;
+
+  const { data, error } = await client.auth.getUser();
+
+  if (error) {
+    console.error("GARAGE authentication error:", error.message);
+    return null;
   }
 
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return data.user || null;
 }
 
 /* =========================================================
@@ -193,10 +208,14 @@ function watchAuthenticationChanges() {
   if (!client?.auth) return;
 
   client.auth.onAuthStateChange((_event, session) => {
-    currentUser = session?.user || null;
+    const newUser = session?.user || null;
+    const previousUserId = currentUser?.id || null;
+
+    currentUser = newUser;
     currentProfile = null;
 
-    if (!currentUser) {
+    if (!newUser) {
+      likedPostIds = new Set();
       renderFeed();
 
       if ($("messageTo")) {
@@ -206,7 +225,7 @@ function watchAuthenticationChanges() {
       return;
     }
 
-    const userId = currentUser.id;
+    const userId = newUser.id;
 
     Promise.resolve().then(async () => {
       const { data, error } = await client
@@ -223,7 +242,12 @@ function watchAuthenticationChanges() {
       if (currentUser?.id !== userId) return;
 
       currentProfile = data || null;
-      renderFeed();
+
+      if (previousUserId !== userId) {
+        await loadCommunityPosts();
+      } else {
+        renderFeed();
+      }
 
       if ($("messageTo")) {
         await loadMessageMembers();
@@ -233,7 +257,7 @@ function watchAuthenticationChanges() {
 }
 
 /* =========================================================
-   4. PUBLIC COMMUNITY FEED
+   4. LOAD COMMUNITY POSTS, LIKES, COMMENTS
 ========================================================= */
 
 async function loadCommunityPosts() {
@@ -257,11 +281,18 @@ async function loadCommunityPosts() {
     if (error) throw error;
 
     const posts = data || [];
-    const userIds = [
-      ...new Set(posts.map((post) => post.user_id).filter(Boolean))
-    ];
+    const postIds = posts.map((post) => post.id);
+    const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
 
     const profilesById = {};
+    const likesByPost = {};
+    const commentsByPost = {};
+    const userLikes = new Set();
+
+    for (const post of posts) {
+      likesByPost[post.id] = 0;
+      commentsByPost[post.id] = [];
+    }
 
     if (userIds.length) {
       const { data: profiles, error: profileError } = await client
@@ -278,10 +309,76 @@ async function loadCommunityPosts() {
       }
     }
 
+    if (postIds.length) {
+      const { data: likes, error: likesError } = await client
+        .from("post_likes")
+        .select("post_id, user_id")
+        .in("post_id", postIds);
+
+      if (likesError) throw likesError;
+
+      for (const like of likes || []) {
+        likesByPost[like.post_id] = (likesByPost[like.post_id] || 0) + 1;
+
+        if (currentUser && like.user_id === currentUser.id) {
+          userLikes.add(like.post_id);
+        }
+      }
+
+      const { data: comments, error: commentsError } = await client
+        .from("post_comments")
+        .select("id, post_id, user_id, content, created_at")
+        .in("post_id", postIds)
+        .order("created_at", { ascending: true });
+
+      if (commentsError) throw commentsError;
+
+      const commentUserIds = [
+        ...new Set((comments || []).map((comment) => comment.user_id).filter(Boolean))
+      ];
+
+      const commentProfilesById = {};
+
+      if (commentUserIds.length) {
+        const { data: commentProfiles, error: commentProfilesError } = await client
+          .from("profiles")
+          .select("id, username, display_name")
+          .in("id", commentUserIds);
+
+        if (commentProfilesError) {
+          console.warn("GARAGE comment author lookup:", commentProfilesError.message);
+        }
+
+        for (const profile of commentProfiles || []) {
+          commentProfilesById[profile.id] = profile;
+        }
+      }
+
+      for (const comment of comments || []) {
+        if (!commentsByPost[comment.post_id]) {
+          commentsByPost[comment.post_id] = [];
+        }
+
+        const profile = commentProfilesById[comment.user_id];
+
+        commentsByPost[comment.post_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          author: profile?.display_name || profile?.username || "Garage Member",
+          text: comment.content,
+          createdAt: comment.created_at
+        });
+      }
+    }
+
     communityPosts = posts.map((post) => ({
       ...post,
       authorProfile: profilesById[post.user_id] || null
     }));
+
+    postLikeCounts = likesByPost;
+    postComments = commentsByPost;
+    likedPostIds = userLikes;
 
     renderFeed();
   } catch (error) {
@@ -290,6 +387,10 @@ async function loadCommunityPosts() {
   }
 }
 
+/* =========================================================
+   5. POST MEDIA RENDERING
+========================================================= */
+
 function renderPostMedia(mediaUrl) {
   if (!mediaUrl) return "";
 
@@ -297,25 +398,20 @@ function renderPostMedia(mediaUrl) {
 
   if (isVideoUrl(mediaUrl)) {
     return `
-      <video
-        class="post-media"
-        controls
-        playsinline
-        preload="metadata"
-        src="${safeUrl}"
-      ></video>
+      <video class="post-media" controls playsinline
+        preload="metadata" src="${safeUrl}"></video>
     `;
   }
 
   return `
-    <img
-      class="post-media"
-      loading="lazy"
-      src="${safeUrl}"
-      alt="Photo shared in the GARAGE community"
-    >
+    <img class="post-media" loading="lazy"
+      src="${safeUrl}" alt="Photo shared in the GARAGE community">
   `;
 }
+
+/* =========================================================
+   6. RENDER COMMUNITY FEED
+========================================================= */
 
 function renderFeed() {
   const feed = $("feed");
@@ -349,8 +445,9 @@ function renderFeed() {
     const profile = post.authorProfile;
     const name = getDisplayName(profile, post.user_id);
     const avatarUrl = profile?.avatar_url || "";
-    const liked = localLikes.has(post.id);
-    const comments = localComments[post.id] || [];
+    const liked = likedPostIds.has(post.id);
+    const likeCount = postLikeCounts[post.id] || 0;
+    const comments = postComments[post.id] || [];
 
     const avatarMarkup = avatarUrl
       ? `<img class="avatar" src="${escapeHTML(avatarUrl)}"
@@ -365,7 +462,8 @@ function renderFeed() {
     const commentsMarkup = comments.map((comment) => `
       <div class="comment">
         <strong>${escapeHTML(comment.author)}:</strong>
-        ${escapeHTML(comment.text)}
+        ${escapeHTML(comment.text).replace(/\n/g, "<br>")}
+        <small class="muted">${escapeHTML(formatDate(comment.createdAt))}</small>
       </div>
     `).join("");
 
@@ -389,7 +487,7 @@ function renderFeed() {
           <button class="action ${liked ? "liked" : ""}"
             type="button" data-like="${escapeHTML(post.id)}"
             aria-pressed="${liked ? "true" : "false"}">
-            ${liked ? "♥ Liked" : "♡ Like"}
+            ${liked ? "♥ Liked" : "♡ Like"} · ${likeCount}
           </button>
 
           <button class="action" type="button"
@@ -411,28 +509,19 @@ function renderFeed() {
 }
 
 /* =========================================================
-   5. PHOTO AND VIDEO PICKER
+   7. PHOTO AND VIDEO PICKER
 ========================================================= */
 
 function clearMediaPreview({ clearInput = true } = {}) {
-  if (mediaPreviewUrl) {
-    URL.revokeObjectURL(mediaPreviewUrl);
-  }
+  if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
 
   mediaPreviewUrl = "";
   selectedMedia = null;
 
-  if (clearInput && $("postMedia")) {
-    $("postMedia").value = "";
-  }
+  if (clearInput && $("postMedia")) $("postMedia").value = "";
 
-  if ($("fileName")) {
-    $("fileName").textContent = "No media selected";
-  }
-
-  if ($("mediaPreview")) {
-    $("mediaPreview").replaceChildren();
-  }
+  if ($("fileName")) $("fileName").textContent = "No media selected";
+  if ($("mediaPreview")) $("mediaPreview").replaceChildren();
 }
 
 function setupMediaPicker() {
@@ -443,20 +532,15 @@ function setupMediaPicker() {
     const file = event.target.files?.[0] || null;
 
     clearMediaPreview({ clearInput: false });
-
     if (!file) return;
 
-    const extension = getFileExtension(file);
-
-    if (!extension) {
+    if (!getFileExtension(file)) {
       input.value = "";
       notify("Use JPG, PNG, WebP, GIF, MP4, WebM, or MOV.");
       return;
     }
 
-    const maxSize = 8 * 1024 * 1024;
-
-    if (file.size > maxSize) {
+    if (file.size > 8 * 1024 * 1024) {
       input.value = "";
       notify("Choose a photo or video no larger than 8 MB.");
       return;
@@ -465,24 +549,22 @@ function setupMediaPicker() {
     selectedMedia = file;
     mediaPreviewUrl = URL.createObjectURL(file);
 
-    if ($("fileName")) {
-      $("fileName").textContent = file.name;
-    }
+    if ($("fileName")) $("fileName").textContent = file.name;
 
     const preview = $("mediaPreview");
     if (!preview) return;
 
     preview.replaceChildren();
 
-    let element;
+    const element = document.createElement(
+      file.type.startsWith("video/") ? "video" : "img"
+    );
 
-    if (file.type.startsWith("video/")) {
-      element = document.createElement("video");
+    if (element.tagName === "VIDEO") {
       element.controls = true;
       element.playsInline = true;
       element.preload = "metadata";
     } else {
-      element = document.createElement("img");
       element.alt = "Selected media preview";
     }
 
@@ -493,7 +575,7 @@ function setupMediaPicker() {
 }
 
 /* =========================================================
-   6. PUBLISH PUBLIC COMMUNITY POSTS
+   8. PUBLISH COMMUNITY POSTS
 ========================================================= */
 
 async function publishPost(event) {
@@ -542,10 +624,7 @@ async function publishPost(event) {
 
     if (selectedMedia) {
       const extension = getFileExtension(selectedMedia);
-
-      if (!extension) {
-        throw new Error("Unsupported media type.");
-      }
+      if (!extension) throw new Error("Unsupported media type.");
 
       uploadedPath = `${user.id}/${makeUniqueId()}.${extension}`;
 
@@ -563,10 +642,7 @@ async function publishPost(event) {
         .getPublicUrl(uploadedPath);
 
       mediaUrl = publicData?.publicUrl || null;
-
-      if (!mediaUrl) {
-        throw new Error("Could not create the media URL.");
-      }
+      if (!mediaUrl) throw new Error("Could not create the media URL.");
     }
 
     const { error: insertError } = await client
@@ -581,7 +657,6 @@ async function publishPost(event) {
     if (insertError) throw insertError;
 
     if ($("postText")) $("postText").value = "";
-
     clearMediaPreview();
 
     await loadCommunityPosts();
@@ -607,7 +682,139 @@ async function publishPost(event) {
 }
 
 /* =========================================================
-   7. DEMO MEMBERS AND FOLLOWS
+   9. REAL LIKES AND COMMENTS
+========================================================= */
+
+function setupFeedInteractions() {
+  const feed = $("feed");
+  if (!feed) return;
+
+  feed.addEventListener("click", async (event) => {
+    const likeButton = event.target.closest("[data-like]");
+    const commentButton = event.target.closest("[data-focus-comment]");
+
+    if (likeButton) {
+      event.preventDefault();
+      if (likeButton.disabled) return;
+
+      const user = await getSignedInUser();
+
+      if (!user) {
+        notify("Please sign in to like posts.");
+        return;
+      }
+
+      const postId = likeButton.dataset.like;
+      const wasLiked = likedPostIds.has(postId);
+
+      likeButton.disabled = true;
+
+      try {
+        if (wasLiked) {
+          const { error } = await client
+            .from("post_likes")
+            .delete()
+            .eq("post_id", postId)
+            .eq("user_id", user.id);
+
+          if (error) throw error;
+
+          likedPostIds.delete(postId);
+          postLikeCounts[postId] = Math.max(
+            0,
+            (postLikeCounts[postId] || 0) - 1
+          );
+        } else {
+          const { error } = await client
+            .from("post_likes")
+            .insert({
+              post_id: postId,
+              user_id: user.id
+            });
+
+          if (error && error.code !== "23505") throw error;
+
+          if (!error) {
+            postLikeCounts[postId] = (postLikeCounts[postId] || 0) + 1;
+          }
+
+          likedPostIds.add(postId);
+        }
+
+        renderFeed();
+      } catch (error) {
+        console.error("GARAGE like error:", error);
+        notify("Could not update like: " + error.message);
+      }
+
+      return;
+    }
+
+    if (commentButton) {
+      const postId = commentButton.dataset.focusComment;
+      const form = [...feed.querySelectorAll("[data-comment]")]
+        .find((item) => item.dataset.comment === postId);
+
+      form?.querySelector('input[name="comment"]')?.focus();
+    }
+  });
+
+  feed.addEventListener("submit", async (event) => {
+    const form = event.target.closest("form[data-comment]");
+    if (!form) return;
+
+    event.preventDefault();
+    if (form.dataset.busy === "true") return;
+
+    const user = await getSignedInUser();
+
+    if (!user) {
+      notify("Please sign in to comment.");
+      return;
+    }
+
+    const input = form.elements.namedItem("comment");
+    const content = input?.value.trim() || "";
+
+    if (!content) return;
+
+    if (content.length > 1000) {
+      notify("Comments must be 1,000 characters or fewer.");
+      return;
+    }
+
+    const postId = form.dataset.comment;
+    const submitButton = form.querySelector('button[type="submit"]');
+
+    form.dataset.busy = "true";
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+      const { error } = await client
+        .from("post_comments")
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+          content
+        });
+
+      if (error) throw error;
+
+      input.value = "";
+      await loadCommunityPosts();
+      notify("Comment posted.");
+    } catch (error) {
+      console.error("GARAGE comment error:", error);
+      notify("Could not post comment: " + error.message);
+    } finally {
+      form.dataset.busy = "false";
+      if (submitButton) submitButton.disabled = false;
+    }
+  });
+}
+
+/* =========================================================
+   10. DEMO MEMBERS AND FOLLOWS
 ========================================================= */
 
 function renderMembers() {
@@ -658,7 +865,7 @@ function setupMemberInteractions() {
 }
 
 /* =========================================================
-   8. DEMO MARKETPLACE
+   11. DEMO MARKETPLACE
 ========================================================= */
 
 function renderListings() {
@@ -705,81 +912,8 @@ function setupListingForm() {
 }
 
 /* =========================================================
-   9. DEMO LIKES AND COMMENTS
+   12. PRIVATE SUPABASE MESSAGING
 ========================================================= */
-
-function setupFeedInteractions() {
-  const feed = $("feed");
-  if (!feed) return;
-
-  feed.addEventListener("click", (event) => {
-    const likeButton = event.target.closest("[data-like]");
-    const commentButton = event.target.closest("[data-focus-comment]");
-
-    if (likeButton) {
-      const postId = likeButton.dataset.like;
-
-      if (localLikes.has(postId)) {
-        localLikes.delete(postId);
-      } else {
-        localLikes.add(postId);
-      }
-
-      renderFeed();
-      return;
-    }
-
-    if (commentButton) {
-      const postId = commentButton.dataset.focusComment;
-      const form = [...feed.querySelectorAll("[data-comment]")]
-        .find((item) => item.dataset.comment === postId);
-
-      form?.querySelector('input[name="comment"]')?.focus();
-    }
-  });
-
-  feed.addEventListener("submit", (event) => {
-    const form = event.target.closest("form[data-comment]");
-    if (!form) return;
-
-    event.preventDefault();
-
-    const input = form.elements.namedItem("comment");
-    const text = input?.value.trim() || "";
-    if (!text) return;
-
-    const postId = form.dataset.comment;
-
-    if (!localComments[postId]) {
-      localComments[postId] = [];
-    }
-
-    localComments[postId].push({
-      author: getCurrentDisplayName(),
-      text
-    });
-
-    renderFeed();
-    notify("Comment added locally. It is not saved to Supabase.");
-  });
-}
-
-/* =========================================================
-   10. SUPABASE PRIVATE MESSAGING
-========================================================= */
-
-async function getSignedInUser() {
-  if (!client?.auth) return null;
-
-  const { data, error } = await client.auth.getUser();
-
-  if (error) {
-    console.error("GARAGE messaging authentication error:", error.message);
-    return null;
-  }
-
-  return data.user || null;
-}
 
 function showConversationMessage(text, isError = false) {
   const conversation = $("conversation");
@@ -797,11 +931,9 @@ function showConversationMessage(text, isError = false) {
 }
 
 function memberLabel(profile) {
-  return (
-    profile.display_name ||
+  return profile.display_name ||
     profile.username ||
-    `Member ${String(profile.id).slice(0, 6)}`
-  );
+    `Member ${String(profile.id).slice(0, 6)}`;
 }
 
 async function loadMessageMembers() {
@@ -990,10 +1122,7 @@ async function loadConversation() {
     console.error("GARAGE conversation error:", error);
 
     if (thisLoad === messageLoadNumber) {
-      showConversationMessage(
-        "Could not load messages: " + error.message,
-        true
-      );
+      showConversationMessage("Could not load messages: " + error.message, true);
     }
   }
 }
@@ -1068,13 +1197,11 @@ function setupMessages() {
     }
   });
 
-  if (recipientSelect && form) {
-    loadMessageMembers();
-  }
+  if (recipientSelect && form) loadMessageMembers();
 }
 
 /* =========================================================
-   11. NAVIGATION AND SEARCH
+   13. NAVIGATION AND SEARCH
 ========================================================= */
 
 function showPage(pageName) {
@@ -1134,14 +1261,12 @@ function setupNavigation() {
   $("search")?.addEventListener("input", () => {
     renderFeed();
 
-    if ($("search").value.trim()) {
-      showPage("feed");
-    }
+    if ($("search").value.trim()) showPage("feed");
   });
 }
 
 /* =========================================================
-   12. STARTUP
+   14. STARTUP
 ========================================================= */
 
 async function init() {
@@ -1150,7 +1275,6 @@ async function init() {
   setupListingForm();
   setupFeedInteractions();
   setupMemberInteractions();
-  setupMessages();
 
   $("postForm")?.addEventListener("submit", publishPost);
 
@@ -1163,11 +1287,12 @@ async function init() {
     return;
   }
 
-  watchAuthenticationChanges();
   await loadCurrentUser();
+  watchAuthenticationChanges();
+
+  setupMessages();
   await loadCommunityPosts();
 
-  // Support direct links such as index.html?page=messages&to=UUID.
   const params = new URLSearchParams(window.location.search);
 
   if (params.get("page") === "messages") {
@@ -1175,18 +1300,16 @@ async function init() {
   }
 }
 
+/* =========================================================
+   15. START AND CLEANUP
+========================================================= */
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init, { once: true });
 } else {
   init();
 }
 
-/* =========================================================
-   13. CLEANUP
-========================================================= */
-
 window.addEventListener("beforeunload", () => {
-  if (mediaPreviewUrl) {
-    URL.revokeObjectURL(mediaPreviewUrl);
-  }
+  if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
 });
