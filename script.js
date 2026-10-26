@@ -1164,3 +1164,320 @@
     if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
   });
 })();
+          if (currentUser?.id !== nextUser.id) return;
+          currentProfile = profile || null;
+        }
+        updateAuthUI();
+        await loadCommunityPosts();
+        if ($("messageTo")) await loadMessageMembers();
+        else showConversationMessage("Please sign in to use private messages.");
+      });
+    });
+    authSubscription = data?.subscription || null;
+  }
+
+  async function loadCommunityPosts() {
+    if (!$("feed")) return;
+    if (!client) {
+      showStatus("Supabase is not initialized. Check supabase-client.js.");
+      return;
+    }
+
+    showStatus("Loading community posts...");
+
+    try {
+      const { data, error } = await client.from("posts")
+        .select("id, user_id, caption, image_url, created_at, is_community")
+        .eq("is_community", true)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const posts = data || [];
+      const postIds = posts.map((post) => post.id);
+      const userIds = [...new Set(
+        posts.map((post) => post.user_id).filter(Boolean)
+      )];
+
+      const profilesById = {};
+      const likesByPost = {};
+      const commentsByPost = {};
+      const userLikes = new Set();
+
+      posts.forEach((post) => {
+        likesByPost[post.id] = 0;
+        commentsByPost[post.id] = [];
+      });
+
+      if (userIds.length) {
+        const { data: profiles, error: profileError } = await client
+          .from("profiles")
+          .select("id, username, display_name, avatar_url, favorite_car")
+          .in("id", userIds);
+
+        if (profileError) {
+          console.warn("GARAGE author lookup:", profileError.message);
+        }
+
+        (profiles || []).forEach((profile) => {
+          profilesById[profile.id] = profile;
+        });
+      }
+
+      if (postIds.length) {
+        const { data: likes, error: likesError } = await client
+          .from("post_likes")
+          .select("post_id, user_id")
+          .in("post_id", postIds);
+
+        if (likesError) throw likesError;
+
+        (likes || []).forEach((like) => {
+          likesByPost[like.post_id] =
+            (likesByPost[like.post_id] || 0) + 1;
+
+          if (currentUser && like.user_id === currentUser.id) {
+            userLikes.add(like.post_id);
+          }
+        });
+
+        const { data: comments, error: commentsError } = await client
+          .from("post_comments")
+          .select("id, post_id, user_id, content, created_at")
+          .in("post_id", postIds)
+          .order("created_at", { ascending: true });
+
+        if (commentsError) throw commentsError;
+
+        const commentUserIds = [...new Set(
+          (comments || []).map((comment) => comment.user_id).filter(Boolean)
+        )];
+
+        const commentProfiles = {};
+
+        if (commentUserIds.length) {
+          const { data: profiles, error: profileError } = await client
+            .from("profiles")
+            .select("id, username, display_name")
+            .in("id", commentUserIds);
+
+          if (profileError) {
+            console.warn("GARAGE comment author lookup:", profileError.message);
+          }
+
+          (profiles || []).forEach((profile) => {
+            commentProfiles[profile.id] = profile;
+          });
+        }
+
+        (comments || []).forEach((comment) => {
+          const profile = commentProfiles[comment.user_id];
+
+          commentsByPost[comment.post_id].push({
+            id: comment.id,
+            userId: comment.user_id,
+            author: profile?.display_name ||
+              profile?.username ||
+              "Garage Member",
+            text: comment.content,
+            createdAt: comment.created_at
+          });
+        });
+      }
+
+      communityPosts = posts.map((post) => ({
+        ...post,
+        authorProfile: profilesById[post.user_id] || null
+      }));
+
+      postLikeCounts = likesByPost;
+      postComments = commentsByPost;
+      likedPostIds = userLikes;
+
+      renderFeed();
+    } catch (error) {
+      console.error("GARAGE community feed error:", error);
+      showStatus(
+        "Could not load community posts: " +
+        (error.message || "Unknown error")
+      );
+    }
+  }
+
+  function renderPostMedia(mediaUrl) {
+    if (!mediaUrl) return "";
+
+    const safeUrl = escapeHTML(mediaUrl);
+
+    return isVideoUrl(mediaUrl)
+      ? `<video class="post-media" controls playsinline preload="metadata" src="${safeUrl}"></video>`
+      : `<img class="post-media" loading="lazy" src="${safeUrl}" alt="Photo shared in the GARAGE community">`;
+  }
+
+  function renderFeed() {
+    const feed = $("feed");
+    if (!feed) return;
+
+    const query = ($("search")?.value || "").trim().toLowerCase();
+
+    const visiblePosts = communityPosts.filter((post) => {
+      const profile = post.authorProfile;
+
+      return [
+        getDisplayName(profile, post.user_id),
+        profile?.favorite_car || "",
+        profile?.username || "",
+        post.caption || ""
+      ].join(" ").toLowerCase().includes(query);
+    });
+
+    if (!visiblePosts.length) {
+      showStatus(
+        communityPosts.length
+          ? "No matching posts. Try another search."
+          : "No public community posts yet. Be the first to share a build!"
+      );
+      return;
+    }
+
+    feed.innerHTML = visiblePosts.map((post) => {
+      const profile = post.authorProfile;
+      const name = getDisplayName(profile, post.user_id);
+
+      const avatar = profile?.avatar_url
+        ? `<img class="avatar" src="${escapeHTML(profile.avatar_url)}" alt="${escapeHTML(name)}'s avatar" loading="lazy" style="object-fit:cover;">`
+        : `<div class="avatar" aria-hidden="true">${makeInitials(name)}</div>`;
+
+      const caption = post.caption
+        ? `<div class="post-copy">${escapeHTML(post.caption).replace(/\n/g, "<br>")}</div>`
+        : "";
+
+      const comments = postComments[post.id] || [];
+
+      const commentsHTML = comments.map((comment) => `
+        <div class="comment">
+          <strong>${escapeHTML(comment.author)}:</strong>
+          ${escapeHTML(comment.text).replace(/\n/g, "<br>")}
+          <small class="muted">${escapeHTML(formatDate(comment.createdAt))}</small>
+        </div>
+      `).join("");
+
+      const liked = likedPostIds.has(post.id);
+
+      const commentControls = currentUser
+        ? `<form class="comment-form" data-comment="${escapeHTML(post.id)}">
+             <input name="comment" type="text" maxlength="1000"
+               placeholder="Write a comment..."
+               aria-label="Write a comment" required>
+             <button class="action" type="submit">Send</button>
+           </form>`
+        : `<p class="guest-inline"><a href="auth.html">Sign in</a> to leave a comment.</p>`;
+
+      return `
+        <article class="post" data-post-id="${escapeHTML(post.id)}">
+          <div class="post-head">
+            ${avatar}
+            <div>
+              <strong>${escapeHTML(name)}</strong>
+              <p class="muted">
+                ${escapeHTML(profile?.favorite_car || "Car enthusiast")}
+                ${post.created_at
+                  ? ` · ${escapeHTML(formatDate(post.created_at))}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+
+          ${caption}
+          ${renderPostMedia(post.image_url)}
+
+          <div class="post-actions">
+            <button class="action ${liked ? "liked" : ""}"
+              type="button"
+              data-like="${escapeHTML(post.id)}"
+              aria-pressed="${liked ? "true" : "false"}"
+              ${currentUser ? "" : 'title="Sign in to like posts"'}>
+              ${liked ? "♥ Liked" : "♡ Like"} · ${postLikeCounts[post.id] || 0}
+            </button>
+
+            <button class="action" type="button"
+              data-focus-comment="${escapeHTML(post.id)}">
+              Comments · ${comments.length}
+            </button>
+          </div>
+
+          <div class="comment-list">${commentsHTML}</div>
+          ${commentControls}
+        </article>
+      `;
+    }).join("");
+  }
+
+  function clearMediaPreview({ clearInput = true } = {}) {
+    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+
+    mediaPreviewUrl = "";
+    selectedMedia = null;
+
+    if (clearInput && $("postMedia")) {
+      $("postMedia").value = "";
+    }
+
+    if ($("fileName")) {
+      $("fileName").textContent = "No media selected";
+    }
+
+    $("mediaPreview")?.replaceChildren();
+  }
+
+  function setupMediaPicker() {
+    const input = $("postMedia");
+    if (!input) return;
+
+    input.addEventListener("change", (event) => {
+      const file = event.target.files?.[0] || null;
+
+      clearMediaPreview({ clearInput: false });
+
+      if (!file) return;
+
+      if (!getFileExtension(file)) {
+        input.value = "";
+        notify("Use JPG, PNG, WebP, GIF, MP4, WebM, or MOV.");
+        return;
+      }
+
+      if (file.size > 8 * 1024 * 1024) {
+        input.value = "";
+        notify("Choose a photo or video no larger than 8 MB.");
+        return;
+      }
+
+      selectedMedia = file;
+      mediaPreviewUrl = URL.createObjectURL(file);
+
+      if ($("fileName")) {
+        $("fileName").textContent = file.name;
+      }
+
+      const preview = $("mediaPreview");
+      if (!preview) return;
+
+      preview.replaceChildren();
+
+      let element;
+
+      if (file.type.startsWith("video/")) {
+        element = document.createElement("video");
+        element.controls = true;
+        element.playsInline = true;
+      } else {
+        element = document.createElement("img");
+        element.alt = "Selected media preview";
+      }
+
+      element.src = mediaPreviewUrl;
+      element.className = "post-media";
+      preview.appendChild(element);
+    });
+  }
