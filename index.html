@@ -4,531 +4,278 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0b0e0b">
-  <meta name="description" content="GARAGE is an automotive community for sharing builds, repairs, photos and videos.">
-  <title>GARAGE | Automotive Community</title>
-  <link rel="stylesheet" href="style.css">
-
-  <style>
-    [hidden],
-    .hidden {
-      display: none !important;
-    }
-
-    .guest-card {
-      padding: 22px;
-      margin-bottom: 22px;
-      background: #141814;
-      border: 1px solid #30392b;
-      border-radius: 14px;
-    }
-
-    .guest-card h3 {
-      margin-top: 0;
-    }
-
-    .guest-card p {
-      color: #aab2a5;
-      line-height: 1.6;
-    }
-
-    .guest-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 18px;
-    }
-
-    .guest-button {
-      display: inline-block;
-      padding: 11px 16px;
-      border-radius: 8px;
-      text-align: center;
-      text-decoration: none;
-      cursor: pointer;
-    }
-
-    .guest-button-primary {
-      background: #39ff14;
-      color: #071007;
-      font-weight: 700;
-    }
-
-    .guest-button-secondary {
-      color: #e8eee4;
-      border: 1px solid #394334;
-      background: transparent;
-    }
-
-    .guest-button-secondary:hover {
-      color: #39ff14;
-      border-color: #39ff14;
-    }
-
-    .guest-banner {
-      border-left: 3px solid #39ff14;
-    }
-
-    #account-status:empty {
-      display: none;
-    }
-
-    .composer label {
-      display: block;
-      margin-bottom: 7px;
-    }
-
-    .composer input:not([type="file"]),
-    .composer textarea,
-    .composer select {
-      box-sizing: border-box;
-      max-width: 100%;
-      width: 100%;
-    }
-
-    .composer input[type="file"] {
-      max-width: 100%;
-    }
-
-    .conversation {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 14px 0;
-    }
-
-    .message-status,
-    #carMessage {
-      overflow-wrap: anywhere;
-    }
-
-    .feed-media-preview img,
-    .feed-media-preview video {
-      display: block;
-      max-width: 100%;
-      max-height: 420px;
-      border-radius: 10px;
-      margin-top: 12px;
-    }
-
-    .feed-posts,
-    #feed {
-      min-width: 0;
-    }
-
-    @media (max-width: 760px) {
-      .topbar {
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .search {
-        max-width: 100%;
-      }
-
-      .layout {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .sidebar,
-      .rightbar {
-        width: 100%;
-      }
-    }
-  </style>
+  <meta name="theme-color" content="#101114">
+  <meta name="description" content="GARAGE — a community for car enthusiasts.">
+  <title>GARAGE — Car Community</title>
+  <link rel="stylesheet" href="./style.css">
 </head>
-
 <body>
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="GARAGE home">
-      <span class="brand-icon">G</span>
-      GARAGE<span class="green">.</span>
-    </a>
+    <a class="brand" href="#" data-page="home">GARAGE<span>.</span></a>
 
-    <label for="search" class="hidden">Search the community</label>
-    <input
-      id="search"
-      class="search"
-      type="search"
-      placeholder="Search cars, builds, people"
-    >
+    <div class="topbar-search">
+      <input id="search" type="search" placeholder="Search GARAGE..." aria-label="Search">
+    </div>
 
-    <a
-      id="profileBtn"
-      class="profile-chip"
-      href="profile.html"
-      data-auth-only
-      hidden
-    >👤 My profile</a>
-
-    <span id="account-status" aria-live="polite"></span>
-
-    <a id="auth-link" class="auth-nav-link" href="auth.html">
-      Login / Signup
-    </a>
-
-    <button
-      id="logout-btn"
-      class="auth-nav-link"
-      type="button"
-      hidden
-    >Log Out</button>
+    <div id="account-bar" class="account-bar">
+      <span id="account-status">Not signed in</span>
+      <button id="logout-btn" class="btn btn-outline hidden" type="button">Log out</button>
+    </div>
   </header>
 
-  <div class="layout">
-    <aside class="sidebar" aria-label="Main navigation">
-      <p class="eyebrow">COMMUNITY</p>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <nav class="nav">
+        <button class="nav-item active" data-page="home" type="button">⌂ <span>Home</span></button>
+        <button class="nav-item" data-page="community" type="button">◎ <span>Community</span></button>
+        <button class="nav-item" data-page="members" type="button">♙ <span>Members</span></button>
+        <button class="nav-item" data-page="marketplace" type="button">◇ <span>Marketplace</span></button>
+        <button class="nav-item" data-page="messages" type="button">✉ <span>Messages</span></button>
+        <button class="nav-item" data-page="profile" type="button">♧ <span>My Profile</span></button>
+        <button class="nav-item" data-page="auth" type="button">⇥ <span>Login / Sign up</span></button>
+      </nav>
 
-      <button class="nav active" type="button" data-page="feed">
-        ⌂ &nbsp; Home feed
-      </button>
-
-      <button class="nav" type="button" data-page="discover">
-        ◎ &nbsp; Discover builds
-      </button>
-
-      <button class="nav" type="button" data-page="market">
-        ◇ &nbsp; Car marketplace
-      </button>
-
-      <button
-        class="nav"
-        type="button"
-        data-page="garage"
-        data-auth-only
-        hidden
-      >⚙ &nbsp; My garage</button>
-
-      <a class="nav" href="feed.html" data-auth-only hidden>
-        ▤ &nbsp; My Feed
-      </a>
-
-      <button
-        class="nav"
-        type="button"
-        data-page="members"
-        data-auth-only
-        hidden
-      >👥 &nbsp; Members</button>
-
-      <button
-        class="nav"
-        type="button"
-        data-page="messages"
-        data-auth-only
-        hidden
-      >✉ &nbsp; Messages</button>
-
-      <div class="side-note">
-        <span class="green">●</span> BUILT FOR ENTHUSIASTS
-        <p>Every car has a story.</p>
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        Built for car people.
       </div>
     </aside>
 
-    <main class="main">
-      <section class="hero" aria-labelledby="hero-title">
-        <p class="eyebrow green">YOUR AUTOMOTIVE COMMUNITY</p>
-        <h1 id="hero-title">
-          BUILD IT.<br>
-          DRIVE IT. <span class="green">SHARE IT.</span>
-        </h1>
-        <p>
-          Show off your build. Learn from the community.
-          Find your next project.
-        </p>
-      </section>
+    <main class="main-content">
+      <div id="toast" class="toast hidden" role="status"></div>
 
-      <!-- PUBLIC COMMUNITY FEED -->
-      <section
-        id="feedPage"
-        class="page"
-        aria-labelledby="community-feed-title"
-      >
-        <div class="section-heading">
-          <h2 id="community-feed-title">Community feed</h2>
-          <span class="live"><i></i> COMMUNITY</span>
+      <!-- HOME -->
+      <section id="homePage" class="page active">
+        <div class="hero">
+          <div class="hero-content">
+            <span class="eyebrow">YOUR CARS. YOUR PEOPLE.</span>
+            <h1>WELCOME TO<br>THE <span>GARAGE.</span></h1>
+            <p>Share your builds, meet car enthusiasts, and discover your next ride.</p>
+            <button class="btn btn-primary" type="button" data-go="community">Explore community ↗</button>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="hero-ring"></div>
+            <div class="hero-car">G</div>
+            <span class="hero-label">BUILT DIFFERENT.</span>
+          </div>
         </div>
 
-        <!-- Only authenticated users can publish posts. -->
-        <form id="postForm" class="composer" data-auth-only hidden>
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">WHAT'S HAPPENING</span>
+            <h2>Inside the Garage</h2>
+          </div>
+          <button class="btn btn-outline" type="button" data-go="community">View feed →</button>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-icon">◎</span>
+            <strong>Community</strong>
+            <p>Meet people who love cars as much as you do.</p>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">◇</span>
+            <strong>Marketplace</strong>
+            <p>Discover cars and connect with sellers.</p>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">✉</span>
+            <strong>Messages</strong>
+            <p>Talk directly with other members.</p>
+          </article>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">FRESH FROM THE COMMUNITY</span>
+            <h2>Latest posts</h2>
+          </div>
+        </div>
+        <div id="homeFeed" class="feed-list"></div>
+      </section>
+
+      <!-- COMMUNITY -->
+      <section id="communityPage" class="page">
+        <div class="page-heading">
+          <span class="eyebrow">SHARE YOUR PASSION</span>
+          <h1>Community</h1>
+          <p>Your builds, your projects, your stories.</p>
+        </div>
+
+        <form id="postForm" class="panel composer">
           <label for="postText">What's happening in your garage?</label>
-          <textarea
-            id="postText"
-            placeholder="Share your latest build, repair or car meet..."
-            maxlength="5000"
-          ></textarea>
-
-          <div class="composer-bottom">
-            <label class="upload-label" for="postMedia">
-              ＋ Photo/video
-            </label>
-
-            <input
-              id="postMedia"
-              name="postMedia"
-              type="file"
-              accept="image/*,video/*"
-              hidden
-            >
-
+          <textarea id="postText" maxlength="2000" placeholder="Show us what you're working on..." rows="4"></textarea>
+          <div id="mediaPreview" class="media-preview"></div>
+          <div class="composer-actions">
+            <label class="btn btn-outline file-button" for="postMedia">＋ Add photo/video</label>
+            <input id="postMedia" type="file" accept="image/*,video/*" hidden>
             <span id="fileName" class="muted">No media selected</span>
-
-            <button class="primary" type="submit">
-              Publish post ↗
-            </button>
+            <button class="btn btn-primary" type="submit">Publish post ↗</button>
           </div>
-
-          <div
-            id="mediaPreview"
-            class="feed-media-preview"
-            aria-live="polite"
-          ></div>
         </form>
 
-        <!-- Shown to visitors who are not signed in. -->
-        <div id="guestPostPrompt" class="guest-card guest-banner">
-          <h3>Got a build to share?</h3>
-          <p>
-            Anyone can explore the community feed.
-            Join GARAGE to publish posts, share photos and videos,
-            like builds, and comment.
-          </p>
-
-          <div class="guest-actions">
-            <a class="guest-button guest-button-primary" href="auth.html">
-              Join GARAGE
-            </a>
-            <a class="guest-button guest-button-secondary" href="auth.html">
-              Log in
-            </a>
-          </div>
-        </div>
-
-        <!-- Public post cards, likes and comments are rendered here. -->
-        <div
-          id="feed"
-          class="feed-posts"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <p class="muted">Loading community posts...</p>
-        </div>
-      </section>
-
-      <!-- DISCOVER -->
-      <section id="discoverPage" class="page hidden">
         <div class="section-heading">
-          <h2>Discover builds</h2>
+          <h2>Community feed</h2>
+          <button id="refreshFeed" class="btn btn-outline" type="button">↻ Refresh</button>
         </div>
-        <p class="muted">Find inspiration for your next project.</p>
-
-        <div class="feature-grid">
-          <article class="feature-card">
-            <div class="feature-icon">🏁</div>
-            <h3>Performance builds</h3>
-            <p>Engine swaps, tuning and track projects.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">🔧</div>
-            <h3>DIY repairs</h3>
-            <p>Maintenance tips and workshop projects.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">✨</div>
-            <h3>Custom style</h3>
-            <p>Restorations, paint, wheels and interiors.</p>
-          </article>
-        </div>
-      </section>
-
-      <!-- MARKETPLACE -->
-      <section id="marketPage" class="page hidden">
-        <div class="section-heading">
-          <h2>Car marketplace</h2>
-        </div>
-
-        <form id="listingForm" class="composer" data-auth-only hidden>
-          <h3>List a car</h3>
-
-          <label for="carName">Car name</label>
-          <input
-            id="carName"
-            name="carName"
-            placeholder="e.g. Honda Civic 2008"
-            required
-          >
-
-          <label for="carPrice">Price in USD</label>
-          <input
-            id="carPrice"
-            name="carPrice"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Enter price"
-            required
-          >
-
-          <label for="carDetails">Car details</label>
-          <input
-            id="carDetails"
-            name="carDetails"
-            placeholder="Condition, mileage, location..."
-          >
-
-          <button class="primary" type="submit">＋ Add listing</button>
-        </form>
-
-        <div id="guestMarketPrompt" class="guest-card">
-          <h3>Have a car to sell?</h3>
-          <p>Sign in to create and manage your listings.</p>
-          <a class="guest-button guest-button-primary" href="auth.html">
-            Log in / Sign up
-          </a>
-        </div>
-
-        <div id="carListings" class="listing-grid"></div>
-      </section>
-
-      <!-- PRIVATE GARAGE -->
-      <section
-        id="garagePage"
-        class="page hidden"
-        data-auth-only
-        hidden
-      >
-        <div class="section-heading">
-          <h2>My garage</h2>
-        </div>
-
-        <div id="memberGarage">
-          <div class="composer">
-            <h3>Add a car</h3>
-            <form id="carForm">
-              <label for="carMake">Make</label>
-              <input id="carMake" placeholder="e.g. Toyota" required>
-
-              <label for="carModel">Model</label>
-              <input id="carModel" placeholder="e.g. Corolla" required>
-
-              <label for="carYear">Year</label>
-              <input
-                id="carYear"
-                type="number"
-                min="1886"
-                max="2100"
-                placeholder="e.g. 2005"
-              >
-
-              <label for="carDescription">Description</label>
-              <textarea
-                id="carDescription"
-                placeholder="Tell us about your car..."
-              ></textarea>
-
-              <label for="carMods">Modifications</label>
-              <textarea
-                id="carMods"
-                placeholder="Wheels, exhaust, engine upgrades..."
-              ></textarea>
-
-              <button type="submit" class="primary">Save car</button>
-              <p id="carMessage" role="status"></p>
-            </form>
-          </div>
-
-          <div class="composer">
-            <h3>Cars in your garage</h3>
-            <div id="carList">Loading cars...</div>
-          </div>
-        </div>
+        <div id="feed" class="feed-list"></div>
       </section>
 
       <!-- MEMBERS -->
-      <section
-        id="membersPage"
-        class="page hidden"
-        data-auth-only
-        hidden
-      >
-        <div class="section-heading">
-          <h2>Members</h2>
+      <section id="membersPage" class="page">
+        <div class="page-heading">
+          <span class="eyebrow">FIND YOUR PEOPLE</span>
+          <h1>Members</h1>
+          <p>Discover other car enthusiasts on GARAGE.</p>
         </div>
-        <p class="muted">Discover other automotive enthusiasts.</p>
-        <div id="memberDirectory"></div>
+        <div id="members" class="members-grid"></div>
       </section>
 
-      <!-- PRIVATE MESSAGES -->
-      <section
-        id="messagesPage"
-        class="page hidden"
-        data-auth-only
-        hidden
-      >
-        <div class="section-heading">
-          <h2>Messages</h2>
+      <!-- MARKETPLACE -->
+      <section id="marketplacePage" class="page">
+        <div class="page-heading">
+          <span class="eyebrow">BUY. SELL. DRIVE.</span>
+          <h1>Marketplace</h1>
+          <p>Browse cars listed by the community.</p>
         </div>
 
-        <div class="composer">
-          <h3>Private messages</h3>
-          <p class="muted">
-            Choose a registered member to view your conversation.
-          </p>
+        <form id="listingForm" class="panel">
+          <h2>List your car</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label for="carName">Car title</label>
+              <input id="carName" maxlength="120" placeholder="e.g. 2018 Honda Civic" required>
+            </div>
+            <div class="field">
+              <label for="carPrice">Price (USD)</label>
+              <input id="carPrice" type="number" min="0" step="0.01" placeholder="8500" required>
+            </div>
+          </div>
+          <div class="field">
+            <label for="carDetails">Description</label>
+            <textarea id="carDetails" maxlength="3000" rows="3" placeholder="Condition, mileage, modifications..."></textarea>
+          </div>
+          <button class="btn btn-primary" type="submit">Publish listing ↗</button>
+        </form>
 
-          <form id="messageForm">
-            <label for="messageTo">Message a member</label>
-            <select id="messageTo" name="messageTo" required>
-              <option value="">Loading members...</option>
+        <div class="section-heading">
+          <h2>Available cars</h2>
+        </div>
+        <div id="carListings" class="listings-grid"></div>
+      </section>
+
+      <!-- MESSAGES -->
+      <section id="messagesPage" class="page">
+        <div class="page-heading">
+          <span class="eyebrow">TALK DIRECTLY</span>
+          <h1>Messages</h1>
+          <p>Private conversations with GARAGE members.</p>
+        </div>
+
+        <div class="panel messaging-panel">
+          <div class="field">
+            <label for="messageTo">Send a message to</label>
+            <select id="messageTo" required>
+              <option value="">Choose a member...</option>
             </select>
-
-            <div
-              id="conversation"
-              class="conversation"
-              aria-live="polite"
-            ></div>
-
-            <label for="messageText">Your message</label>
-            <textarea
-              id="messageText"
-              name="messageText"
-              placeholder="Write a message..."
-              maxlength="5000"
-              required
-            ></textarea>
-
-            <button class="primary" type="submit">
-              Send message ↗
-            </button>
+          </div>
+          <div id="conversation" class="conversation">
+            <p class="muted">Choose a member to load your conversation.</p>
+          </div>
+          <form id="messageForm" class="message-form">
+            <textarea id="messageText" maxlength="5000" rows="2" placeholder="Write a message..." required></textarea>
+            <button class="btn btn-primary" type="submit">Send ↗</button>
           </form>
         </div>
       </section>
+
+      <!-- PROFILE -->
+      <section id="profilePage" class="page">
+        <div class="page-heading">
+          <span class="eyebrow">YOUR SPACE</span>
+          <h1>My Profile</h1>
+          <p>Tell the community about yourself and your cars.</p>
+        </div>
+
+        <form id="profileForm" class="panel">
+          <div class="field">
+            <label for="profileUsername">Username</label>
+            <input id="profileUsername" maxlength="40" placeholder="Your username">
+          </div>
+          <div class="field">
+            <label for="profileDisplayName">Display name</label>
+            <input id="profileDisplayName" maxlength="80" placeholder="Your name">
+          </div>
+          <div class="field">
+            <label for="profileBio">About you</label>
+            <textarea id="profileBio" maxlength="500" rows="3" placeholder="Tell us about yourself..."></textarea>
+          </div>
+          <div class="field">
+            <label for="profileFavoriteCar">Favorite car</label>
+            <input id="profileFavoriteCar" maxlength="120" placeholder="Your dream car">
+          </div>
+          <button class="btn btn-primary" type="submit">Save profile</button>
+        </form>
+      </section>
+
+      <!-- AUTH -->
+      <section id="authPage" class="page">
+        <div class="auth-layout">
+          <div class="auth-intro">
+            <span class="eyebrow">JOIN THE COMMUNITY</span>
+            <h1>YOUR NEXT<br>CHAPTER <span>STARTS HERE.</span></h1>
+            <p>Create an account to share posts, list cars, and message other members.</p>
+          </div>
+
+          <div class="panel auth-panel">
+            <div class="auth-tabs">
+              <button id="showLogin" class="auth-tab active" type="button">Log in</button>
+              <button id="showSignup" class="auth-tab" type="button">Sign up</button>
+            </div>
+
+            <form id="loginForm" class="auth-form">
+              <h2>Welcome back</h2>
+              <div class="field">
+                <label for="loginEmail">Email</label>
+                <input id="loginEmail" type="email" autocomplete="email" required>
+              </div>
+              <div class="field">
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" type="password" autocomplete="current-password" required>
+              </div>
+              <button class="btn btn-primary btn-full" type="submit">Log in</button>
+            </form>
+
+            <form id="signupForm" class="auth-form hidden">
+              <h2>Create your account</h2>
+              <div class="field">
+                <label for="signupUsername">Username</label>
+                <input id="signupUsername" maxlength="40" autocomplete="username" required>
+              </div>
+              <div class="field">
+                <label for="signupEmail">Email</label>
+                <input id="signupEmail" type="email" autocomplete="email" required>
+              </div>
+              <div class="field">
+                <label for="signupPassword">Password</label>
+                <input id="signupPassword" type="password" minlength="6" autocomplete="new-password" required>
+              </div>
+              <button class="btn btn-primary btn-full" type="submit">Create account</button>
+            </form>
+
+            <p id="auth-status" class="form-status" role="status"></p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <a class="brand" href="#" data-page="home">GARAGE<span>.</span></a>
+        <p>Built for car people. Drive your own story.</p>
+      </footer>
     </main>
-
-    <aside class="rightbar">
-      <div class="panel">
-        <p class="eyebrow">GARAGE SPOTLIGHT</p>
-        <div class="spotlight-art">🏎️</div>
-        <h3>Show them your build.</h3>
-        <p class="muted">Your next project could inspire someone.</p>
-        <button id="shareBtn" class="primary full" type="button">
-          ＋ Create a post
-        </button>
-      </div>
-
-      <div class="panel" data-auth-only hidden>
-        <p class="eyebrow">COMMUNITY MEMBERS</p>
-        <div id="members"></div>
-      </div>
-
-      <p class="footer-note">
-        GARAGE. <span class="green">DRIVEN BY COMMUNITY.</span>
-      </p>
-    </aside>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-  <!-- Keep one shared Supabase client and one application script entry point. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./supabase-client.js"></script>
   <script src="./garage.js" defer></script>
