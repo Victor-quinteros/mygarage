@@ -1,26 +1,16 @@
 
+/* =========================================================
+   1. GARAGE PROFILE AND MY FEED
+   Uses the shared Supabase client from supabase-client.js.
+========================================================= */
+
 (() => {
   "use strict";
 
-  const SUPABASE_URL =
-    "https://ovooslmyfavrtlxazykq.supabase.co";
+  const client = window.garageSupabase;
 
-  const SUPABASE_KEY =
-    "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
-
-  const client = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
-
-  // Existing profile elements
   const form = document.getElementById("profile-form");
   const status = document.getElementById("profile-status");
-
-  if (!form || !status) {
-    console.error("Profile form or status message is missing.");
-    return;
-  }
 
   const usernameInput = document.getElementById("username");
   const displayNameInput = document.getElementById("display-name");
@@ -28,9 +18,8 @@
   const favoriteCarInput = document.getElementById("favorite-car");
   const avatarInput = document.getElementById("avatar-file");
   const avatarPreview = document.getElementById("avatar-preview");
-  const saveButton = form.querySelector('button[type="submit"]');
+  const saveButton = form?.querySelector('button[type="submit"]');
 
-  // MY FEED elements
   const postForm = document.getElementById("post-form");
   const postCaption = document.getElementById("post-caption");
   const postImage = document.getElementById("post-image");
@@ -40,6 +29,7 @@
 
   const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
   const MAX_POST_IMAGE_SIZE = 5 * 1024 * 1024;
+  const MAX_CAPTION_LENGTH = 2000;
 
   const ALLOWED_TYPES = [
     "image/jpeg",
@@ -48,196 +38,336 @@
     "image/gif"
   ];
 
+  let currentUser = null;
   let currentAvatarUrl = "";
   let selectedAvatar = null;
   let previewObjectUrl = null;
-  let currentUser = null;
+  let savingProfile = false;
+  let publishingPost = false;
+
+  /* =========================================================
+     2. HELPERS AND ERROR MESSAGES
+  ========================================================= */
+
+  function setStatus(element, text, isError = false) {
+    if (!element) return;
+
+    element.textContent = text;
+    element.setAttribute("role", isError ? "alert" : "status");
+    element.classList.toggle("error", isError);
+  }
+
+  function explainError(error) {
+    const text = error?.message || "An unexpected error occurred.";
+
+    if (/row-level security|permission denied|not allowed/i.test(text)) {
+      return "Supabase denied the operation. Check the table or storage bucket permissions.";
+    }
+
+    if (/duplicate key|already exists|unique constraint/i.test(text)) {
+      return "That username is already taken. Please choose another.";
+    }
+
+    if (/failed to fetch|network/i.test(text)) {
+      return "Could not connect to Supabase. Check your internet connection.";
+    }
+
+    return text;
+  }
 
   function setAvatarPreview(url) {
-    if (avatarPreview && url) {
+    if (!avatarPreview) return;
+
+    if (url) {
       avatarPreview.src = url;
+      avatarPreview.hidden = false;
+    } else {
+      avatarPreview.removeAttribute("src");
+      avatarPreview.hidden = true;
     }
   }
 
-  // Profile picture selection
-  if (avatarInput) {
-    avatarInput.addEventListener("change", () => {
-      const file = avatarInput.files?.[0];
-      selectedAvatar = null;
+  function clearAvatarPreviewUrl() {
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = null;
+    }
+  }
 
-      if (!file) return;
+  function setBusy(button, busy, normalText, busyText) {
+    if (!button) return;
 
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        avatarInput.value = "";
-        status.textContent =
-          "Please choose a JPG, PNG, WebP, or GIF image.";
-        return;
-      }
-
-      if (file.size > MAX_AVATAR_SIZE) {
-        avatarInput.value = "";
-        status.textContent =
-          "Your profile picture must be 2 MB or smaller.";
-        return;
-      }
-
-      selectedAvatar = file;
-
-      if (avatarPreview) {
-        if (previewObjectUrl) {
-          URL.revokeObjectURL(previewObjectUrl);
-        }
-
-        previewObjectUrl = URL.createObjectURL(file);
-        setAvatarPreview(previewObjectUrl);
-      }
-
-      status.textContent =
-        "Picture selected. Save your profile to upload it.";
-    });
+    button.disabled = busy;
+    button.textContent = busy ? busyText : normalText;
   }
 
   async function getLoggedInUser() {
+    if (!client?.auth) {
+      throw new Error("Supabase is not initialized. Check supabase-client.js.");
+    }
+
     const { data, error } = await client.auth.getUser();
 
     if (error) throw error;
+
     if (!data.user) {
-      throw new Error("Please log in to use GARAGE.");
+      throw new Error("Please log in to use this feature.");
     }
 
     return data.user;
   }
 
-  // Load the existing profile
+  async function uploadPublicImage(bucket, filePath, file) {
+    const { error } = await client.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        upsert: true,
+        contentType: file.type,
+        cacheControl: "3600"
+      });
+
+    if (error) throw error;
+
+    const { data } = client.storage.from(bucket).getPublicUrl(filePath);
+
+    if (!data?.publicUrl) {
+      throw new Error("Could not create a public URL for the uploaded image.");
+    }
+
+    return data.publicUrl;
+  }
+
+  function getExtension(file) {
+    const extensions = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "image/gif": "gif"
+    };
+
+    return extensions[file.type] || null;
+  }
+
+  /* =========================================================
+     3. INITIAL VALIDATION
+  ========================================================= */
+
+  if (!client?.auth || !client?.from || !client?.storage) {
+    setStatus(
+      status,
+      "Supabase did not load. Check the script order in your HTML.",
+      true
+    );
+    console.error("GARAGE: window.garageSupabase is unavailable.");
+    return;
+  }
+
+  if (!form || !status) {
+    console.error("GARAGE: Profile form or profile-status element is missing.");
+    return;
+  }
+
+  if (
+    !usernameInput ||
+    !displayNameInput ||
+    !bioInput ||
+    !favoriteCarInput
+  ) {
+    setStatus(
+      status,
+      "The profile form is missing a required input. Check its HTML IDs.",
+      true
+    );
+    console.error("GARAGE: One or more profile fields are missing.");
+    return;
+  }
+
+  /* =========================================================
+     4. AVATAR SELECTION AND PREVIEW
+  ========================================================= */
+
+  if (avatarInput) {
+    avatarInput.addEventListener("change", () => {
+      const file = avatarInput.files?.[0] || null;
+      selectedAvatar = null;
+
+      if (!file) {
+        setAvatarPreview(currentAvatarUrl);
+        return;
+      }
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        avatarInput.value = "";
+        setAvatarPreview(currentAvatarUrl);
+        setStatus(status, "Choose a JPG, PNG, WebP, or GIF image.", true);
+        return;
+      }
+
+      if (file.size > MAX_AVATAR_SIZE) {
+        avatarInput.value = "";
+        setAvatarPreview(currentAvatarUrl);
+        setStatus(status, "Your profile picture must be 2 MB or smaller.", true);
+        return;
+      }
+
+      selectedAvatar = file;
+      clearAvatarPreviewUrl();
+
+      previewObjectUrl = URL.createObjectURL(file);
+      setAvatarPreview(previewObjectUrl);
+
+      setStatus(status, "Picture selected. Save your profile to upload it.");
+    });
+  }
+
+  /* =========================================================
+     5. LOAD PROFILE
+  ========================================================= */
+
   async function loadProfile() {
-    status.textContent = "Checking your login...";
+    setStatus(status, "Loading your profile...");
 
     try {
-      const {
-        data: { user },
-        error: authError
-      } = await client.auth.getUser();
+      const { data: sessionData, error: sessionError } =
+        await client.auth.getSession();
 
-      if (authError || !user) {
+      if (sessionError) throw sessionError;
+
+      const user = sessionData.session?.user || null;
+
+      if (!user) {
+        currentUser = null;
         form.hidden = true;
 
         if (postForm) postForm.hidden = true;
 
-        status.textContent =
-          "Please log in to GARAGE before editing your profile.";
+        setStatus(status, "Please log in before editing your profile.");
 
-        if (feedStatus) {
-          feedStatus.textContent =
-            "Please log in to publish posts.";
-        }
+        setStatus(
+          feedStatus,
+          "Please log in to publish and view your posts."
+        );
 
         return;
       }
 
       currentUser = user;
+      form.hidden = false;
 
-      const { data, error } = await client
+      if (postForm) postForm.hidden = false;
+
+      const { data: profile, error: profileError } = await client
         .from("profiles")
-        .select(
-          "username, display_name, bio, favorite_car, avatar_url"
-        )
+        .select("id, username, display_name, bio, favorite_car, avatar_url")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (error) throw error;
+      if (profileError) throw profileError;
 
-      if (data) {
-        usernameInput.value = data.username || "";
-        displayNameInput.value = data.display_name || "";
-        bioInput.value = data.bio || "";
-        favoriteCarInput.value = data.favorite_car || "";
+      if (profile) {
+        usernameInput.value = profile.username || "";
+        displayNameInput.value = profile.display_name || "";
+        bioInput.value = profile.bio || "";
+        favoriteCarInput.value = profile.favorite_car || "";
+        currentAvatarUrl = profile.avatar_url || "";
 
-        currentAvatarUrl = data.avatar_url || "";
-
-        if (currentAvatarUrl) {
-          setAvatarPreview(currentAvatarUrl);
-        }
-
-        status.textContent = "Your profile is loaded.";
+        setAvatarPreview(currentAvatarUrl);
       } else {
-        displayNameInput.value =
-          user.user_metadata?.display_name || "";
+        usernameInput.value = user.user_metadata?.username || "";
+        displayNameInput.value = user.user_metadata?.display_name || "";
+        bioInput.value = "";
+        favoriteCarInput.value = "";
+        currentAvatarUrl = "";
 
-        status.textContent =
-          "Welcome! Complete your profile and save it.";
+        setAvatarPreview("");
       }
+
+      setStatus(
+        status,
+        profile
+          ? "Your profile is loaded."
+          : "Welcome! Complete your profile and save it."
+      );
 
       await loadPosts(user);
     } catch (error) {
-      console.error("Profile loading error:", error);
-      status.textContent =
-        "Could not load your profile: " + error.message;
-
-      if (feedStatus) {
-        feedStatus.textContent =
-          "Could not initialize your feed: " + error.message;
-      }
+      console.error("GARAGE: Profile loading failed:", error);
+      setStatus(status, "Could not load your profile: " + explainError(error), true);
+      setStatus(feedStatus, "Could not load your feed: " + explainError(error), true);
     }
   }
 
-  // Save the existing profile and profile picture
+  /* =========================================================
+     6. SAVE PROFILE
+     Uses the authenticated user's ID as the profile ID.
+  ========================================================= */
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (savingProfile) return;
+
     const username = usernameInput.value.trim().toLowerCase();
+    const displayName = displayNameInput.value.trim();
+    const bio = bioInput.value.trim();
+    const favoriteCar = favoriteCarInput.value.trim();
 
     if (!/^[a-z0-9_]{3,24}$/.test(username)) {
-      status.textContent =
-        "Username must be 3–24 characters using lowercase letters, numbers, or underscores.";
+      setStatus(
+        status,
+        "Username must be 3–24 characters using lowercase letters, numbers, or underscores.",
+        true
+      );
+      usernameInput.focus();
       return;
     }
 
-    saveButton.disabled = true;
-    status.textContent = "Saving your profile...";
+    if (displayName.length > 80) {
+      setStatus(status, "Display name must be 80 characters or fewer.", true);
+      return;
+    }
+
+    if (bio.length > 500) {
+      setStatus(status, "Bio must be 500 characters or fewer.", true);
+      return;
+    }
+
+    if (favoriteCar.length > 100) {
+      setStatus(status, "Favorite car must be 100 characters or fewer.", true);
+      return;
+    }
+
+    savingProfile = true;
+    setBusy(saveButton, true, "Save profile", "Saving...");
+
+    let uploadedAvatarPath = null;
 
     try {
       const user = await getLoggedInUser();
       currentUser = user;
 
       if (selectedAvatar) {
-        const extensionByType = {
-          "image/jpeg": "jpg",
-          "image/png": "png",
-          "image/webp": "webp",
-          "image/gif": "gif"
-        };
-
-        const extension = extensionByType[selectedAvatar.type];
+        const extension = getExtension(selectedAvatar);
 
         if (!extension) {
           throw new Error("Unsupported profile picture format.");
         }
 
-        const filePath = `${user.id}/avatar.${extension}`;
+        uploadedAvatarPath = `${user.id}/avatar.${extension}`;
 
-        const { error: uploadError } = await client.storage
-          .from("avatars")
-          .upload(filePath, selectedAvatar, {
-            upsert: true,
-            contentType: selectedAvatar.type,
-            cacheControl: "3600"
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = client.storage
-          .from("avatars")
-          .getPublicUrl(filePath);
-
-        currentAvatarUrl = publicUrlData.publicUrl;
+        currentAvatarUrl = await uploadPublicImage(
+          "avatars",
+          uploadedAvatarPath,
+          selectedAvatar
+        );
       }
 
       const profile = {
         id: user.id,
         username,
-        display_name: displayNameInput.value.trim(),
-        bio: bioInput.value.trim(),
-        favorite_car: favoriteCarInput.value.trim(),
+        display_name: displayName || null,
+        bio: bio || null,
+        favorite_car: favoriteCar || null,
         avatar_url: currentAvatarUrl || null,
         updated_at: new Date().toISOString()
       };
@@ -248,34 +378,36 @@
 
       if (error) {
         if (error.code === "23505") {
-          throw new Error(
-            "That username is already taken. Please choose another."
-          );
+          throw new Error("That username is already taken. Please choose another.");
         }
 
         throw error;
       }
 
       selectedAvatar = null;
-
       if (avatarInput) avatarInput.value = "";
 
-      status.textContent = "Profile saved successfully!";
+      clearAvatarPreviewUrl();
+      setAvatarPreview(currentAvatarUrl);
+
+      setStatus(status, "Profile saved successfully!");
     } catch (error) {
-      console.error("Profile saving error:", error);
-      status.textContent = "Error: " + error.message;
+      console.error("GARAGE: Profile saving failed:", error);
+      setStatus(status, "Could not save profile: " + explainError(error), true);
     } finally {
-      saveButton.disabled = false;
+      savingProfile = false;
+      setBusy(saveButton, false, "Save profile", "Saving...");
     }
   });
 
-  // Format a post's date
+  /* =========================================================
+     7. POST DATE AND POST RENDERING
+  ========================================================= */
+
   function formatPostDate(dateString) {
     const date = new Date(dateString);
 
-    if (Number.isNaN(date.getTime())) {
-      return "Date unavailable";
-    }
+    if (Number.isNaN(date.getTime())) return "Date unavailable";
 
     return date.toLocaleString(undefined, {
       dateStyle: "medium",
@@ -283,7 +415,6 @@
     });
   }
 
-  // Display posts safely using DOM elements
   function renderPost(post, profile) {
     const article = document.createElement("article");
     article.className = "feed-post";
@@ -298,10 +429,7 @@
       avatar.alt = "Your profile picture";
       avatar.loading = "lazy";
 
-      avatar.addEventListener("error", () => {
-        avatar.remove();
-      }, { once: true });
-
+      avatar.addEventListener("error", () => avatar.remove(), { once: true });
       header.appendChild(avatar);
     }
 
@@ -310,15 +438,11 @@
     const author = document.createElement("p");
     author.className = "feed-post-author";
     author.textContent =
-      profile?.display_name ||
-      profile?.username ||
-      "GARAGE Member";
+      profile?.display_name || profile?.username || "GARAGE Member";
 
     const username = document.createElement("p");
     username.className = "feed-post-date";
-    username.textContent = profile?.username
-      ? "@" + profile.username
-      : "";
+    username.textContent = profile?.username ? "@" + profile.username : "";
 
     authorInfo.append(author, username);
     header.appendChild(authorInfo);
@@ -353,86 +477,92 @@
     feedList.appendChild(article);
   }
 
-  // Load the signed-in user's posts
+  /* =========================================================
+     8. LOAD MY POSTS
+  ========================================================= */
+
   async function loadPosts(user) {
     if (!postForm || !feedList || !feedStatus) return;
 
-    feedStatus.textContent = "Loading your feed...";
+    setStatus(feedStatus, "Loading your posts...");
     feedList.replaceChildren();
 
-    const { data: posts, error } = await client
-      .from("posts")
-      .select("id, user_id, caption, image_url, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      const { data: posts, error: postsError } = await client
+        .from("posts")
+        .select("id, user_id, caption, image_url, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Feed loading error:", error);
-      feedStatus.textContent =
-        "Could not load posts. Check the Supabase posts table and access policies.";
-      return;
+      if (postsError) throw postsError;
+
+      const { data: profile, error: profileError } = await client
+        .from("profiles")
+        .select("username, display_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.warn("GARAGE: Could not load the post author profile:", profileError);
+      }
+
+      if (!posts || posts.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "feed-empty";
+        empty.textContent = "No posts yet. Share your first build or update!";
+        feedList.appendChild(empty);
+      } else {
+        posts.forEach((post) => renderPost(post, profile));
+      }
+
+      setStatus(
+        feedStatus,
+        `${posts.length} ${posts.length === 1 ? "post" : "posts"} found.`
+      );
+    } catch (error) {
+      console.error("GARAGE: Feed loading failed:", error);
+      setStatus(feedStatus, "Could not load posts: " + explainError(error), true);
     }
-
-    const { data: profile, error: profileError } = await client
-      .from("profiles")
-      .select("username, display_name, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      console.error("Could not load feed profile:", profileError);
-    }
-
-    if (!posts || posts.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "feed-empty";
-      empty.textContent =
-        "No posts yet. Share your first build or update!";
-      feedList.appendChild(empty);
-    } else {
-      posts.forEach((post) => renderPost(post, profile));
-    }
-
-    feedStatus.textContent =
-      posts.length + (posts.length === 1 ? " post published." : " posts published.");
   }
 
-  // Publish a new post
-  if (postForm) {
+  /* =========================================================
+     9. PUBLISH A POST
+     Uploads an optional image and then creates the post row.
+  ========================================================= */
+
+  if (postForm && postCaption && postImage && feedStatus && publishButton) {
     postForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+
+      if (publishingPost) return;
 
       const caption = postCaption.value.trim();
       const imageFile = postImage.files?.[0] || null;
 
       if (!caption && !imageFile) {
-        feedStatus.textContent =
-          "Write a caption or choose a photo before posting.";
+        setStatus(feedStatus, "Write a caption or choose a photo first.", true);
         return;
       }
 
-      if (caption.length > 2000) {
-        feedStatus.textContent =
-          "Your caption must be 2,000 characters or fewer.";
+      if (caption.length > MAX_CAPTION_LENGTH) {
+        setStatus(feedStatus, "Caption must be 2,000 characters or fewer.", true);
         return;
       }
 
-      if (imageFile) {
-        if (!ALLOWED_TYPES.includes(imageFile.type)) {
-          feedStatus.textContent =
-            "Choose a JPG, PNG, WebP, or GIF image.";
-          return;
-        }
-
-        if (imageFile.size > MAX_POST_IMAGE_SIZE) {
-          feedStatus.textContent =
-            "Your post image must be 5 MB or smaller.";
-          return;
-        }
+      if (imageFile && !ALLOWED_TYPES.includes(imageFile.type)) {
+        setStatus(feedStatus, "Choose a JPG, PNG, WebP, or GIF image.", true);
+        return;
       }
 
-      publishButton.disabled = true;
-      feedStatus.textContent = "Publishing your post...";
+      if (imageFile && imageFile.size > MAX_POST_IMAGE_SIZE) {
+        setStatus(feedStatus, "Post images must be 5 MB or smaller.", true);
+        return;
+      }
+
+      publishingPost = true;
+      setBusy(publishButton, true, "Publish post", "Publishing...");
+
+      let uploadedPath = null;
 
       try {
         const user = await getLoggedInUser();
@@ -441,56 +571,65 @@
         let imageUrl = null;
 
         if (imageFile) {
-          const extensionByType = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-            "image/gif": "gif"
-          };
+          const extension = getExtension(imageFile);
 
-          const extension = extensionByType[imageFile.type];
-          const filePath =
-            `${user.id}/${crypto.randomUUID()}.${extension}`;
+          if (!extension) {
+            throw new Error("Unsupported image format.");
+          }
 
-          const { error: uploadError } = await client.storage
-            .from("post-images")
-            .upload(filePath, imageFile, {
-              upsert: false,
-              contentType: imageFile.type,
-              cacheControl: "3600"
-            });
+          const uniqueId = window.crypto?.randomUUID
+            ? window.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-          if (uploadError) throw uploadError;
+          uploadedPath = `${user.id}/${uniqueId}.${extension}`;
 
-          const { data: publicUrlData } = client.storage
-            .from("post-images")
-            .getPublicUrl(filePath);
-
-          imageUrl = publicUrlData.publicUrl;
+          imageUrl = await uploadPublicImage(
+            "post-images",
+            uploadedPath,
+            imageFile
+          );
         }
 
         const { error: insertError } = await client
           .from("posts")
           .insert({
             user_id: user.id,
-            caption,
+            caption: caption || null,
             image_url: imageUrl
           });
 
         if (insertError) throw insertError;
 
         postForm.reset();
-        feedStatus.textContent = "Post published!";
+        setStatus(feedStatus, "Post published successfully!");
+
         await loadPosts(user);
+        setStatus(feedStatus, "Post published successfully!");
       } catch (error) {
-        console.error("Post publishing error:", error);
-        feedStatus.textContent =
-          "Could not publish your post: " + error.message;
+        console.error("GARAGE: Publishing post failed:", error);
+
+        // Clean up an uploaded image if the post itself could not be saved.
+        if (uploadedPath) {
+          const { error: cleanupError } = await client.storage
+            .from("post-images")
+            .remove([uploadedPath]);
+
+          if (cleanupError) {
+            console.warn("GARAGE: Could not clean up uploaded image:", cleanupError);
+          }
+        }
+
+        setStatus(feedStatus, "Could not publish post: " + explainError(error), true);
       } finally {
-        publishButton.disabled = false;
+        publishingPost = false;
+        setBusy(publishButton, false, "Publish post", "Publishing...");
       }
     });
   }
+
+  /* =========================================================
+     10. STARTUP
+  ========================================================= */
 
   loadProfile();
 })();
