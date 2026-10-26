@@ -5,10 +5,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <meta
+    name="description"
+    content="Manage your GARAGE community profile, profile picture, and favorite car."
+  >
+
   <title>My Profile | GARAGE</title>
   <link rel="stylesheet" href="style.css">
 
   <style>
+    /* 1. Page layout */
     .profile-page {
       width: min(600px, 92%);
       margin: 50px auto;
@@ -23,8 +29,10 @@
     .profile-intro {
       color: #aaa;
       margin-bottom: 28px;
+      line-height: 1.6;
     }
 
+    /* 2. Navigation */
     .profile-navigation {
       display: flex;
       flex-wrap: wrap;
@@ -35,17 +43,54 @@
     .profile-navigation a {
       color: inherit;
       text-decoration: none;
+      transition: color 0.2s ease;
     }
 
-    .profile-navigation a:hover {
+    .profile-navigation a:hover,
+    .profile-navigation a:focus-visible {
       color: #39ff14;
     }
 
+    /* 3. Profile form */
     #profile-form {
       display: grid;
       gap: 12px;
     }
 
+    #profile-form label:not(.avatar-upload-label) {
+      margin-top: 8px;
+      font-weight: 600;
+    }
+
+    #profile-form input:not([type="file"]),
+    #profile-form textarea {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #151515;
+      color: #fff;
+      font: inherit;
+    }
+
+    #profile-form input:focus,
+    #profile-form textarea:focus {
+      outline: 1px solid #39ff14;
+      border-color: #39ff14;
+    }
+
+    #profile-form input::placeholder,
+    #profile-form textarea::placeholder {
+      color: #888;
+    }
+
+    #profile-form textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    /* 4. Avatar */
     .avatar-section {
       display: flex;
       flex-direction: column;
@@ -85,6 +130,9 @@
       font-weight: bold;
       text-align: center;
       cursor: pointer;
+      transition:
+        background 0.2s ease,
+        color 0.2s ease;
     }
 
     .avatar-upload-label:hover {
@@ -93,7 +141,7 @@
     }
 
     #avatar-file:focus-visible + .avatar-upload-label {
-      outline: 2px solid white;
+      outline: 2px solid #fff;
       outline-offset: 3px;
     }
 
@@ -102,36 +150,10 @@
       color: #aaa;
       font-size: 0.85rem;
       text-align: center;
+      line-height: 1.5;
     }
 
-    #profile-form label:not(.avatar-upload-label) {
-      margin-top: 8px;
-      font-weight: 600;
-    }
-
-    #profile-form input:not([type="file"]),
-    #profile-form textarea {
-      box-sizing: border-box;
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #333;
-      border-radius: 8px;
-      background: #151515;
-      color: white;
-      font: inherit;
-    }
-
-    #profile-form input:focus,
-    #profile-form textarea:focus {
-      outline: 1px solid #39ff14;
-      border-color: #39ff14;
-    }
-
-    #profile-form textarea {
-      min-height: 110px;
-      resize: vertical;
-    }
-
+    /* 5. Save button */
     #profile-form button[type="submit"] {
       margin-top: 16px;
       padding: 13px;
@@ -139,25 +161,70 @@
       border-radius: 8px;
       background: #39ff14;
       color: #080808;
+      font: inherit;
       font-weight: bold;
       cursor: pointer;
+      transition:
+        opacity 0.2s ease,
+        transform 0.2s ease;
+    }
+
+    #profile-form button[type="submit"]:hover:not(:disabled) {
+      transform: translateY(-1px);
     }
 
     #profile-form button:disabled {
       opacity: 0.6;
       cursor: wait;
+      transform: none;
     }
 
+    /* 6. Status messages */
     #profile-status {
+      min-height: 1.5em;
       margin-top: 12px;
       overflow-wrap: anywhere;
+      color: #39ff14;
+      line-height: 1.5;
+    }
+
+    #profile-status:empty {
+      min-height: 0;
+      margin-top: 0;
+    }
+
+    /* 7. Mobile adjustments */
+    @media (max-width: 600px) {
+      .profile-page {
+        margin-top: 30px;
+      }
+
+      .profile-navigation {
+        gap: 12px;
+      }
+
+      .profile-page h1 {
+        font-size: 1.7rem;
+      }
+    }
+
+    /* 8. Accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
 
 <body>
+  <!-- 1. Main header -->
   <header class="topbar">
-    <a class="brand" href="index.html">
+    <a class="brand" href="index.html" aria-label="GARAGE home">
       <span class="brand-icon">G</span>
       GARAGE<span class="green">.</span>
     </a>
@@ -169,20 +236,26 @@
     </nav>
   </header>
 
+  <!-- 2. Profile editor -->
   <main class="profile-page">
     <h1>MY <span class="green">PROFILE</span></h1>
 
     <p class="profile-intro">
       Build your identity in the GARAGE community.
+      Add a profile picture, tell people about yourself,
+      and show everyone your favorite car.
     </p>
 
     <form id="profile-form">
+      <!-- 3. Profile picture -->
       <div class="avatar-section">
         <img
           id="avatar-preview"
           class="avatar-preview"
           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='60' fill='%23151515'/%3E%3Ccircle cx='60' cy='43' r='22' fill='%23555555'/%3E%3Cpath d='M18 112c0-24 18-38 42-38s42 14 42 38' fill='%23555555'/%3E%3C/svg%3E"
           alt="Profile picture preview"
+          width="120"
+          height="120"
         >
 
         <input
@@ -199,9 +272,11 @@
 
         <p id="avatar-help" class="avatar-help">
           JPG, PNG, WebP or GIF. Maximum 2 MB.
+          Your picture uploads when you save your profile.
         </p>
       </div>
 
+      <!-- 4. Username -->
       <label for="username">Username</label>
       <input
         id="username"
@@ -209,20 +284,27 @@
         type="text"
         minlength="3"
         maxlength="24"
+        pattern="[A-Za-z0-9_]{3,24}"
+        title="Use 3–24 letters, numbers, or underscores."
         placeholder="e.g. boostking"
         autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
         required
       >
 
+      <!-- 5. Display name -->
       <label for="display-name">Display name</label>
       <input
         id="display-name"
         name="display-name"
         type="text"
         maxlength="40"
+        autocomplete="nickname"
         placeholder="What should people call you?"
       >
 
+      <!-- 6. Biography -->
       <label for="bio">About you</label>
       <textarea
         id="bio"
@@ -231,6 +313,7 @@
         placeholder="Tell the community about yourself..."
       ></textarea>
 
+      <!-- 7. Favorite car -->
       <label for="favorite-car">Favorite car</label>
       <input
         id="favorite-car"
@@ -240,70 +323,23 @@
         placeholder="e.g. Nissan Skyline R34"
       >
 
-      <button type="submit">Save Profile</button>
+      <!-- 8. Save profile -->
+      <button id="save-profile-button" type="submit">
+        Save Profile
+      </button>
 
       <p
         id="profile-status"
         role="status"
         aria-live="polite"
+        aria-atomic="true"
       ></p>
     </form>
   </main>
 
+  <!-- 9. Scripts: load in this order -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
   <script src="profile.js"></script>
-
-  <script>
-    (() => {
-      const input = document.getElementById("avatar-file");
-      const preview = document.getElementById("avatar-preview");
-      const status = document.getElementById("profile-status");
-
-      let previewUrl = "";
-
-      input.addEventListener("change", () => {
-        const file = input.files?.[0];
-
-        if (previewUrl) {
-          URL.revokeObjectURL(previewUrl);
-          previewUrl = "";
-        }
-
-        if (!file) return;
-
-        const allowedTypes = [
-          "image/jpeg",
-          "image/png",
-          "image/webp",
-          "image/gif"
-        ];
-
-        if (!allowedTypes.includes(file.type)) {
-          input.value = "";
-          status.textContent =
-            "Choose a JPG, PNG, WebP or GIF image.";
-          return;
-        }
-
-        if (file.size > 2 * 1024 * 1024) {
-          input.value = "";
-          status.textContent =
-            "Your image must be 2 MB or smaller.";
-          return;
-        }
-
-        previewUrl = URL.createObjectURL(file);
-        preview.src = previewUrl;
-        status.textContent =
-          "Preview ready. Save your profile to upload it.";
-      });
-
-      window.addEventListener("beforeunload", () => {
-        if (previewUrl) {
-          URL.revokeObjectURL(previewUrl);
-        }
-      });
-    })();
-  </script>
 </body>
 </html>
