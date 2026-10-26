@@ -1,191 +1,884 @@
+
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>My Garage</title>
-        <link rel="stylesheet" href="style.css">
-    </head>
-    <body>
+<head>
+  <!-- ========================================
+       PAGE SETTINGS
+  ========================================= -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0e0b">
 
+  <title>GARAGE | Automotive Community</title>
 
-        
-        <header class="topbar">
-    <a class="brand" href="#">
-      <span class="brand-icon">G</span> GARAGE<span class="green">.</span>
+  <!-- Main website stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- ========================================
+       GUEST VIEW AND FORM STYLES
+       Keeps the existing black and green theme.
+  ========================================= -->
+  <style>
+    [hidden],
+    .hidden {
+      display: none !important;
+    }
+
+    .guest-card {
+      padding: 22px;
+      margin-bottom: 22px;
+      background: #141814;
+      border: 1px solid #30392b;
+      border-radius: 14px;
+    }
+
+    .guest-card h3 {
+      margin-top: 0;
+    }
+
+    .guest-card p {
+      color: #aab2a5;
+      line-height: 1.6;
+    }
+
+    .guest-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .guest-button {
+      display: inline-block;
+      padding: 11px 16px;
+      border-radius: 8px;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .guest-button-primary {
+      background: #39ff14;
+      color: #071007;
+      font-weight: 700;
+    }
+
+    .guest-button-secondary {
+      color: #e8eee4;
+      border: 1px solid #394334;
+    }
+
+    .guest-button-secondary:hover {
+      color: #39ff14;
+      border-color: #39ff14;
+    }
+
+    .guest-banner {
+      border-left: 3px solid #39ff14;
+    }
+
+    #account-status:empty {
+      display: none;
+    }
+
+    /* Keep forms readable and consistent. */
+    .composer label {
+      display: block;
+      margin-bottom: 7px;
+    }
+
+    .composer input:not([type="file"]),
+    .composer textarea {
+      box-sizing: border-box;
+      max-width: 100%;
+    }
+
+    /* Small-screen layout adjustments. */
+    @media (max-width: 760px) {
+      .topbar {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .search {
+        max-width: 100%;
+      }
+
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sidebar,
+      .rightbar {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ========================================
+       HEADER
+       Logo, search, account and authentication.
+  ========================================= -->
+  <header class="topbar">
+
+    <!-- Brand -->
+    <a class="brand" href="index.html" aria-label="GARAGE home">
+      <span class="brand-icon">G</span>
+      GARAGE<span class="green">.</span>
     </a>
-    <input id="search" class="search" placeholder="Search cars, builds, people">
 
-    <a id="profileBtn" class="profile-chip" href="profile.html">
+    <!-- Site search -->
+    <label for="search" class="hidden">Search the community</label>
+    <input
+      id="search"
+      class="search"
+      type="search"
+      placeholder="Search cars, builds, people"
+    >
+
+    <!-- Signed-in account link -->
+    <a
+      id="profileBtn"
+      class="profile-chip"
+      href="profile.html"
+      data-auth-only
+      hidden
+    >
       👤 My profile
     </a>
-            
-<span id="account-status"></span>
 
-<a href="auth.html" class="auth-nav-link" id="auth-link">
-  Login / Signup
-</a>
+    <!-- Authentication status -->
+    <span id="account-status" aria-live="polite"></span>
 
-<button id="logout-btn" class="auth-nav-link" hidden>
-  Log Out
-</button>
+    <!-- Guest authentication link -->
+    <a
+      id="auth-link"
+      class="auth-nav-link"
+      href="auth.html"
+    >
+      Login / Signup
+    </a>
+
+    <!-- Signed-in logout button -->
+    <button
+      id="logout-btn"
+      class="auth-nav-link"
+      type="button"
+      hidden
+    >
+      Log Out
+    </button>
+
   </header>
 
+
+  <!-- ========================================
+       MAIN WEBSITE LAYOUT
+       Sidebar, page content and right sidebar.
+  ========================================= -->
   <div class="layout">
-    <aside class="sidebar">
+
+    <!-- ======================================
+         LEFT SIDEBAR NAVIGATION
+    ======================================= -->
+    <aside class="sidebar" aria-label="Main navigation">
+
       <p class="eyebrow">COMMUNITY</p>
-      <button class="nav active" data-page="feed">⌂ &nbsp; Home feed</button>
-<button class="nav" type="button" onclick="window.location.href='feed.html'">
-  ▤ &nbsp; My Feed
-</button>      <button class="nav" data-page="discover">◎ &nbsp; Discover builds</button>
-      <button class="nav" data-page="market">◇ &nbsp; Car marketplace</button>
-      <button class="nav" data-page="garage">⚙ &nbsp; My garage</button>
-      <button class="nav" data-page="members">👥 &nbsp; Members</button>
-      <button class="nav" data-page="messages">✉ &nbsp; Messages</button>
+
+      <!-- Public navigation -->
+      <button class="nav active" type="button" data-page="feed">
+        ⌂ &nbsp; Home feed
+      </button>
+
+      <button class="nav" type="button" data-page="discover">
+        ◎ &nbsp; Discover builds
+      </button>
+
+      <button class="nav" type="button" data-page="market">
+        ◇ &nbsp; Car marketplace
+      </button>
+
+      <button class="nav" type="button" data-page="garage">
+        ⚙ &nbsp; My garage
+      </button>
+
+      <!-- Signed-in navigation -->
+      <button
+        class="nav"
+        type="button"
+        data-auth-only
+        hidden
+        onclick="window.location.href='feed.html'"
+      >
+        ▤ &nbsp; My Feed
+      </button>
+
+      <button
+        class="nav"
+        type="button"
+        data-page="members"
+        data-auth-only
+        hidden
+      >
+        👥 &nbsp; Members
+      </button>
+
+      <button
+        class="nav"
+        type="button"
+        data-page="messages"
+        data-auth-only
+        hidden
+      >
+        ✉ &nbsp; Messages
+      </button>
+
+      <!-- Sidebar footer -->
       <div class="side-note">
         <span class="green">●</span> BUILT FOR ENTHUSIASTS
         <p>Every car has a story.</p>
       </div>
+
     </aside>
 
+
+    <!-- ======================================
+         MAIN CONTENT
+    ======================================= -->
     <main class="main">
-      <section class="hero">
+
+      <!-- Main welcome banner -->
+      <section class="hero" aria-labelledby="hero-title">
         <p class="eyebrow green">YOUR AUTOMOTIVE COMMUNITY</p>
-        <h1>BUILD IT.<br>DRIVE IT. <span class="green">SHARE IT.</span></h1>
-        <p>Show off your build. Learn from the community. Find your next project.</p>
+
+        <h1 id="hero-title">
+          BUILD IT.<br>
+          DRIVE IT. <span class="green">SHARE IT.</span>
+        </h1>
+
+        <p>
+          Show off your build. Learn from the community.
+          Find your next project.
+        </p>
       </section>
 
+
+      <!-- ====================================
+           COMMUNITY FEED
+           Public posts remain visible to guests.
+      ===================================== -->
       <section id="feedPage" class="page">
+
         <div class="section-heading">
           <h2>Community feed</h2>
           <span class="live"><i></i> YOUR GARAGE</span>
         </div>
 
-         <form id="postForm" class="composer">
-          <label for="postText">What's happening in your garage?</label>
-          <textarea id="postText" placeholder="Share your latest build, repair or car meet..." required></textarea>
+        <!-- Post composer: signed-in users only -->
+        <form
+          id="postForm"
+          class="composer"
+          data-auth-only
+          hidden
+        >
+          <label for="postText">
+            What's happening in your garage?
+          </label>
+
+          <textarea
+            id="postText"
+            placeholder="Share your latest build, repair or car meet..."
+            required
+          ></textarea>
+
           <div class="composer-bottom">
-            <label class="upload-label" for="postMedia">＋ Photo/video</label>
-            <input id="postMedia" type="file" accept="image/*,video/*" hidden>
-            <span id="fileName" class="muted">No media selected</span>
-            <button class="primary" type="submit">Publish post ↗</button>
+
+            <label class="upload-label" for="postMedia">
+              ＋ Photo/video
+            </label>
+
+            <input
+              id="postMedia"
+              type="file"
+              accept="image/*,video/*"
+              hidden
+            >
+
+            <span id="fileName" class="muted">
+              No media selected
+            </span>
+
+            <button class="primary" type="submit">
+              Publish post ↗
+            </button>
+
           </div>
+
+          <!-- Image or video preview -->
           <div id="mediaPreview"></div>
         </form>
-<div id="feed"></div>
+
+        <!-- Guest post prompt -->
+        <div id="guestPostPrompt" class="guest-card guest-banner">
+
+          <h3>Got a build to share?</h3>
+
+          <p>
+            Join GARAGE to publish posts, share car photos
+            and connect with other enthusiasts.
+          </p>
+
+          <div class="guest-actions">
+            <a class="guest-button guest-button-primary" href="auth.html">
+              Join GARAGE
+            </a>
+
+            <a class="guest-button guest-button-secondary" href="auth.html">
+              Log in
+            </a>
+          </div>
+
+        </div>
+
+        <!-- Community posts are rendered here by script.js -->
+        <div id="feed" aria-live="polite"></div>
+
       </section>
 
+
+      <!-- ====================================
+           DISCOVER BUILDS
+      ===================================== -->
       <section id="discoverPage" class="page hidden">
-        <div class="section-heading"><h2>Discover builds</h2></div>
-        <p class="muted">Find inspiration for your next project.</p>
+
+        <div class="section-heading">
+          <h2>Discover builds</h2>
+        </div>
+
+        <p class="muted">
+          Find inspiration for your next project.
+        </p>
+
         <div class="feature-grid">
+
           <article class="feature-card">
             <div class="feature-icon">🏁</div>
             <h3>Performance builds</h3>
             <p>Engine swaps, tuning and track projects.</p>
           </article>
+
           <article class="feature-card">
             <div class="feature-icon">🔧</div>
             <h3>DIY repairs</h3>
             <p>Maintenance tips and workshop projects.</p>
           </article>
+
           <article class="feature-card">
             <div class="feature-icon">✨</div>
             <h3>Custom style</h3>
             <p>Restorations, paint, wheels and interiors.</p>
           </article>
+
         </div>
+
       </section>
 
-       <section id="marketPage" class="page hidden">
-        <div class="section-heading"><h2>Car marketplace</h2></div>
-        <form id="listingForm" class="composer">
+
+      <!-- ====================================
+           CAR MARKETPLACE
+      ===================================== -->
+      <section id="marketPage" class="page hidden">
+
+        <div class="section-heading">
+          <h2>Car marketplace</h2>
+        </div>
+
+        <!-- Listing form: signed-in users only -->
+        <form
+          id="listingForm"
+          class="composer"
+          data-auth-only
+          hidden
+        >
           <h3>List a car</h3>
-          <input id="carName" placeholder="Car name (e.g. Honda Civic 2008)" required>
-          <input id="carPrice" type="number" min="0" placeholder="Price in USD" required>
-          <input id="carDetails" placeholder="Condition, mileage, location...">
-          <button class="primary" type="submit">＋ Add listing</button>
+
+          <label for="carName">Car name</label>
+          <input
+            id="carName"
+            placeholder="e.g. Honda Civic 2008"
+            required
+          >
+
+          <label for="carPrice">Price in USD</label>
+          <input
+            id="carPrice"
+            type="number"
+            min="0"
+            placeholder="Enter price"
+            required
+          >
+
+          <label for="carDetails">Car details</label>
+          <input
+            id="carDetails"
+            placeholder="Condition, mileage, location..."
+          >
+
+          <button class="primary" type="submit">
+            ＋ Add listing
+          </button>
         </form>
-        <div id="carListings" class="listing-grid"></div>
-      </section>
 
-     
-<section id="garagePage" class="page hidden">
-  <div class="section-heading">
-    <h2>My garage</h2>
-  </div>
+        <!-- Guest listing prompt -->
+        <div id="guestMarketPrompt" class="guest-card" hidden>
+          <h3>Have a car to sell?</h3>
+          <p>Sign in to create and manage your listings.</p>
 
-  
-
-  <div class="composer">
-    <h3>Add a car</h3>
-
-    <form id="carForm">
-      <label for="carMake">Make</label>
-      <input id="carMake" placeholder="e.g. Toyota" required>
-
-      <label for="carModel">Model</label>
-      <input id="carModel" placeholder="e.g. Corolla" required>
-
-      <label for="carYear">Year</label>
-      <input id="carYear" type="number" min="1886" max="2100" placeholder="e.g. 2005">
-
-      <label for="carDescription">Description</label>
-      <textarea id="carDescription" placeholder="Tell us about your car..."></textarea>
-
-      <label for="carMods">Modifications</label>
-      <textarea id="carMods" placeholder="Wheels, exhaust, engine upgrades..."></textarea>
-
-      <button type="submit" class="primary">Save car</button>
-      <p id="carMessage" role="status"></p>
-    </form>
-  </div>
-
-  <div class="composer">
-    <h3>Cars in your garage</h3>
-    <div id="carList">Loading cars...</div>
-  </div>
-    </section>
-
-      <section id="messagesPage" class="page hidden">
-        <div class="section-heading"><h2>Messages</h2></div>
-        <div class="composer">
-          <p>Prototype messaging</p>
-          <p class="muted">Choose a demo member to test a local conversation. Real private messaging requires user accounts and a secure backend.</p>
-          <form id="messageForm">
-            <input id="messageTo" placeholder="Member name" required>
-            <div id="conversation" class="conversation"></div>
-            <textarea id="messageText" placeholder="Write a message..." required></textarea>
-            <button class="primary" type="submit">Send message ↗</button>
-          </form>
+          <a class="guest-button guest-button-primary" href="auth.html">
+            Log in / Sign up
+          </a>
         </div>
+
+        <!-- Listings rendered by script.js -->
+        <div id="carListings" class="listing-grid"></div>
+
       </section>
+
+
+      <!-- ====================================
+           MY GARAGE
+      ===================================== -->
+      <section id="garagePage" class="page hidden">
+
+        <div class="section-heading">
+          <h2>My garage</h2>
+        </div>
+
+        <!-- Guest garage view -->
+        <div id="guestGarage" class="guest-card">
+
+          <h3>Your garage starts here.</h3>
+
+          <p>
+            Add your cars, document modifications and keep
+            your automotive projects organized in one place.
+          </p>
+
+          <div class="guest-actions">
+            <a class="guest-button guest-button-primary" href="auth.html">
+              Log in / Create account
+            </a>
+
+            <button
+              class="guest-button guest-button-secondary"
+              type="button"
+              data-page="feed"
+            >
+              Explore community
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Personal garage: signed-in users only -->
+        <div id="memberGarage" hidden>
+
+          <!-- Add a car form -->
+          <div class="composer">
+
+            <h3>Add a car</h3>
+
+            <form id="carForm">
+
+              <label for="carMake">Make</label>
+              <input
+                id="carMake"
+                placeholder="e.g. Toyota"
+                required
+              >
+
+              <label for="carModel">Model</label>
+              <input
+                id="carModel"
+                placeholder="e.g. Corolla"
+                required
+              >
+
+              <label for="carYear">Year</label>
+              <input
+                id="carYear"
+                type="number"
+                min="1886"
+                max="2100"
+                placeholder="e.g. 2005"
+              >
+
+              <label for="carDescription">Description</label>
+              <textarea
+                id="carDescription"
+                placeholder="Tell us about your car..."
+              ></textarea>
+
+              <label for="carMods">Modifications</label>
+              <textarea
+                id="carMods"
+                placeholder="Wheels, exhaust, engine upgrades..."
+              ></textarea>
+
+              <button type="submit" class="primary">
+                Save car
+              </button>
+
+              <p id="carMessage" role="status"></p>
+
+            </form>
+
+          </div>
+
+          <!-- Saved cars -->
+          <div class="composer">
+            <h3>Cars in your garage</h3>
+            <div id="carList">Loading cars...</div>
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <!-- ====================================
+           MEMBERS
+           Available to signed-in users only.
+      ===================================== -->
+      <section
+        id="membersPage"
+        class="page hidden"
+        data-auth-only
+        hidden
+      >
+        <div class="section-heading">
+          <h2>Members</h2>
+        </div>
+
+        <p class="muted">
+          Discover other automotive enthusiasts.
+        </p>
+
+        <div id="memberDirectory"></div>
+      </section>
+
+
+      <!-- ====================================
+           MESSAGES
+           Available to signed-in users only.
+      ===================================== -->
+      <section
+        id="messagesPage"
+        class="page hidden"
+        data-auth-only
+        hidden
+      >
+
+        <div class="section-heading">
+          <h2>Messages</h2>
+        </div>
+
+        <div class="composer">
+
+          <h3>Prototype messaging</h3>
+
+          <p class="muted">
+            This is a demo conversation interface.
+            Real private messaging requires a secure backend.
+          </p>
+
+          <form id="messageForm">
+
+            <label for="messageTo">Member name</label>
+            <input
+              id="messageTo"
+              placeholder="Enter member name"
+              required
+            >
+
+            <div id="conversation" class="conversation"></div>
+
+            <label for="messageText">Your message</label>
+            <textarea
+              id="messageText"
+              placeholder="Write a message..."
+              required
+            ></textarea>
+
+            <button class="primary" type="submit">
+              Send message ↗
+            </button>
+
+          </form>
+
+        </div>
+
+      </section>
+
     </main>
 
+
+    <!-- ======================================
+         RIGHT SIDEBAR
+    ======================================= -->
     <aside class="rightbar">
+
+      <!-- Garage spotlight -->
       <div class="panel">
+
         <p class="eyebrow">GARAGE SPOTLIGHT</p>
+
         <div class="spotlight-art">🏎️</div>
+
         <h3>Show them your build.</h3>
-        <p class="muted">Your next project could inspire someone.</p>
-        <button id="shareBtn" class="primary full">＋ Create a post</button>
+
+        <p class="muted">
+          Your next project could inspire someone.
+        </p>
+
+        <button id="shareBtn" class="primary full" type="button">
+          ＋ Create a post
+        </button>
+
       </div>
-      <div class="panel">
+
+      <!-- Community members: signed-in users only -->
+      <div class="panel" data-auth-only hidden>
+
         <p class="eyebrow">COMMUNITY MEMBERS</p>
+
         <div id="members"></div>
+
       </div>
-      <p class="footer-note">GARAGE. <span class="green">DRIVEN BY COMMUNITY.</span></p>
+
+      <!-- Site footer -->
+      <p class="footer-note">
+        GARAGE. <span class="green">DRIVEN BY COMMUNITY.</span>
+      </p>
+
     </aside>
+
   </div>
 
-  <div id="toast" class="toast" role="status"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-client.js"></script>
-    <script src="garage.js" defer></script>
-    <script src="script.js"></script>
-    <script src="auth.js"></script>
-    
+  <!-- ========================================
+       GLOBAL STATUS MESSAGE
+  ========================================= -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    </body>
+
+  <!-- ========================================
+       JAVASCRIPT DEPENDENCIES
+       Keep Supabase loaded before its client.
+  ========================================= -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./supabase-client.js"></script>
+  <script src="./garage.js" defer></script>
+  <script src="./script.js"></script>
+  <script src="./auth.js"></script>
+
+
+  <!-- ========================================
+       AUTHENTICATION-BASED DISPLAY
+       Shows member features after session check.
+  ========================================= -->
+  <script>
+    (() => {
+      "use strict";
+
+      const client = window.garageSupabase;
+
+      // Navigation and account controls
+      const memberOnlyElements = document.querySelectorAll("[data-auth-only]");
+      const authLink = document.getElementById("auth-link");
+      const logoutButton = document.getElementById("logout-btn");
+      const accountStatus = document.getElementById("account-status");
+
+      // Guest and member views
+      const postForm = document.getElementById("postForm");
+      const guestPostPrompt = document.getElementById("guestPostPrompt");
+      const guestGarage = document.getElementById("guestGarage");
+      const memberGarage = document.getElementById("memberGarage");
+      const listingForm = document.getElementById("listingForm");
+      const guestMarketPrompt = document.getElementById("guestMarketPrompt");
+      const shareButton = document.getElementById("shareBtn");
+
+      let signedIn = false;
+
+      // Apply the current login state to the page.
+      function updateInterface(user) {
+        signedIn = Boolean(user);
+
+        memberOnlyElements.forEach((element) => {
+          element.hidden = !signedIn;
+        });
+
+        if (authLink) {
+          authLink.hidden = signedIn;
+        }
+
+        if (logoutButton) {
+          logoutButton.hidden = !signedIn;
+        }
+
+        if (accountStatus) {
+          accountStatus.textContent = signedIn ? "Signed in" : "";
+        }
+
+        if (postForm) {
+          postForm.hidden = !signedIn;
+        }
+
+        if (guestPostPrompt) {
+          guestPostPrompt.hidden = signedIn;
+        }
+
+        if (guestGarage) {
+          guestGarage.hidden = signedIn;
+        }
+
+        if (memberGarage) {
+          memberGarage.hidden = !signedIn;
+        }
+
+        if (listingForm) {
+          listingForm.hidden = !signedIn;
+        }
+
+        if (guestMarketPrompt) {
+          guestMarketPrompt.hidden = signedIn;
+        }
+      }
+
+      // Default to guest view while checking authentication.
+      updateInterface(null);
+
+      // Stop here if Supabase failed to initialize.
+      if (!client || !client.auth) {
+        console.error(
+          "GARAGE: Supabase failed to initialize. Check supabase-client.js."
+        );
+        return;
+      }
+
+      // Load the current session.
+      client.auth.getSession()
+        .then(({ data, error }) => {
+          if (error) {
+            throw error;
+          }
+
+          const user = data.session ? data.session.user : null;
+          updateInterface(user);
+        })
+        .catch((error) => {
+          console.error("GARAGE: Session check failed.", error);
+          updateInterface(null);
+        });
+
+      // Update the page after login or logout.
+      client.auth.onAuthStateChange((_event, session) => {
+        updateInterface(session ? session.user : null);
+      });
+
+      // Guests cannot submit posts.
+      if (postForm) {
+        postForm.addEventListener("submit", (event) => {
+          if (signedIn) return;
+
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          window.location.href = "auth.html";
+        }, true);
+      }
+
+      // Guests cannot create marketplace listings.
+      if (listingForm) {
+        listingForm.addEventListener("submit", (event) => {
+          if (signedIn) return;
+
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          window.location.href = "auth.html";
+        }, true);
+      }
+
+      // The spotlight button opens the composer or login page.
+      if (shareButton) {
+        shareButton.addEventListener("click", () => {
+          if (!signedIn) {
+            window.location.href = "auth.html";
+            return;
+          }
+
+          const feedButton = document.querySelector('[data-page="feed"]');
+
+          if (feedButton) {
+            feedButton.click();
+          }
+
+          window.setTimeout(() => {
+            if (postForm) {
+              postForm.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+              });
+
+              const postText = document.getElementById("postText");
+
+              if (postText) {
+                postText.focus();
+              }
+            }
+          }, 100);
+        });
+      }
+
+      // Log the user out through Supabase.
+      if (logoutButton) {
+        logoutButton.addEventListener("click", async () => {
+          try {
+            const { error } = await client.auth.signOut();
+
+            if (error) {
+              throw error;
+            }
+
+            window.location.href = "index.html";
+          } catch (error) {
+            console.error("GARAGE: Logout failed.", error);
+
+            if (accountStatus) {
+              accountStatus.textContent =
+                "Could not log out. Please try again.";
+            }
+          }
+        });
+      }
+
+      // Guests cannot open member-only sections.
+      document.querySelectorAll(
+        '[data-page="messages"], [data-page="members"]'
+      ).forEach((button) => {
+        button.addEventListener("click", (event) => {
+          if (signedIn) return;
+
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          window.location.href = "auth.html";
+        }, true);
+      });
+
+    })();
+  </script>
+
+</body>
 </html>
