@@ -18,7 +18,7 @@
 ========================================================= */
 
 const GARAGE_SUPABASE_URL =
-  "https://ovooslmyfavrtlxazykq.supabase.co";
+  "https://ovooslmyfavrtlxazykq.supabase.com";
 
 const GARAGE_SUPABASE_KEY =
   "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
