@@ -1164,15 +1164,7 @@
     if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
   });
 })();
-          if (currentUser?.id !== nextUser.id) return;
-          currentProfile = profile || null;
-        }
-        updateAuthUI();
-        await loadCommunityPosts();
-        if ($("messageTo")) await loadMessageMembers();
-        else showConversationMessage("Please sign in to use private messages.");
-      });
-    });
+          
     authSubscription = data?.subscription || null;
   }
 
