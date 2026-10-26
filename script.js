@@ -1,132 +1,182 @@
 
 /* =========================================================
-   GARAGE — COMPLETE MAIN WEBSITE SCRIPT
-   REAL SUPABASE FEATURES:
-   - Authentication and profile loading
-   - Public community feed
-   - Photo/video uploads
-   - Persistent likes and comments
-   - Private member messaging and read status
-   DEMO ONLY:
-   - Follows and marketplace listings
+   GARAGE — MAIN WEBSITE SCRIPT
+   Supabase:
+     - Authentication state and profiles
+     - Public community feed
+     - Photo/video uploads
+     - Persistent likes and comments
+     - Private conversations and read status
+
+   Browser demo only:
+     - Follows
+     - Marketplace listings
+
+   Required:
+     - window.garageSupabase initialized before this file
+     - Supabase tables and RLS policies described below
+     - Public Storage bucket: post-images
 ========================================================= */
 "use strict";
 
 (() => {
+  if (window.garageMainScriptLoaded) return;
+  window.garageMainScriptLoaded = true;
+
   const $ = (id) => document.getElementById(id);
   const client = window.garageSupabase;
 
-  const demoMembers = [
-    { name: "Alex Builds", car: "Honda Civic", avatar: "A" },
-    { name: "Street Garage", car: "Nissan Silvia", avatar: "S" },
-    { name: "Turbo Mike", car: "Subaru WRX", avatar: "T" }
-  ];
-
-  let listings = [];
-  let followed = new Set();
-  let communityPosts = [];
-  let currentUser = null;
-  let currentProfile = null;
-  let likedPostIds = new Set();
-  let postLikeCounts = {};
-  let postComments = {};
-  let toastTimer = null;
-  let selectedMedia = null;
-  let mediaPreviewUrl = "";
-  let isPublishingPost = false;
-  let messageBusy = false;
-  let messageLoadNumber = 0;
-  let activeConversationId = null;
-  let memberLoadNumber = 0;
-  let authSubscription = null;
-
-  function escapeHTML(value) {
-    return String(value ?? "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    })[c]);
+  if (!client) {
+    console.error(
+      "GARAGE: window.garageSupabase is missing. Load your Supabase client before script.js."
+    );
+    return;
   }
 
-  function notify(message) {
-    const toast = $("toast");
-    if (!toast) {
-      console.log("[GARAGE]", message);
-      return;
+  const STORAGE_KEYS = {
+    follows: "garage_demo_follows_v1",
+    listings: "garage_demo_listings_v1"
+  };
+
+  const state = {
+    user: null,
+    profile: null,
+    profiles: [],
+    posts: [],
+    activeConversationId: null,
+    activeRecipientId: null,
+    messageChannel: null,
+    feedChannel: null,
+    messageLoadToken: 0,
+    busy: false
+  };
+
+  const escapeHTML = (value = "") =>
+    String(value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[char]);
+
+  const textOf = (value) => String(value ?? "").trim();
+
+  function setText(id, value) {
+    const element = $(id);
+    if (element) element.textContent = value ?? "";
+  }
+
+  function toast(message) {
+    const element = $("toast");
+    if (element) {
+      element.textContent = message;
+      element.hidden = false;
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => {
+        element.hidden = true;
+      }, 3500);
+    } else {
+      console.info("GARAGE:", message);
     }
-    toast.textContent = message;
-    toast.classList.add("show");
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toast.classList.remove("show"), 3500);
   }
 
-  function showStatus(message) {
-    const feed = $("feed");
-    if (!feed) return;
-    feed.replaceChildren();
-    const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent = message;
-    feed.appendChild(p);
+  function setBusy(form, busy, buttonText = "Please wait…") {
+    if (!form) return;
+    const submit = form.querySelector('[type="submit"]');
+    if (!submit) return;
+
+    if (busy) {
+      submit.dataset.originalText = submit.textContent;
+      submit.disabled = true;
+      submit.textContent = buttonText;
+    } else {
+      submit.disabled = false;
+      if (submit.dataset.originalText) {
+        submit.textContent = submit.dataset.originalText;
+        delete submit.dataset.originalText;
+      }
+    }
+  }
+
+  function getLocal(key, fallback) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "null");
+      return value ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function setLocal(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.warn("GARAGE: Could not save demo data.", error);
+      toast("Browser storage is unavailable.");
+    }
+  }
+
+  function currentUserId() {
+    return state.user?.id ?? null;
+  }
+
+  function requireUser() {
+    if (!state.user) {
+      toast("Please sign in to use this feature.");
+      return false;
+    }
+    return true;
   }
 
   function formatDate(value) {
     if (!value) return "";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short"
-    });
+    return Number.isNaN(date.getTime())
+      ? ""
+      : date.toLocaleString();
   }
 
-  function getDisplayName(profile, userId) {
-    return profile?.display_name || profile?.username ||
-      (userId ? `Member ${String(userId).slice(0, 6)}` : "Garage Member");
+  function initials(name = "G") {
+    return textOf(name)
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0] || "")
+      .join("")
+      .toUpperCase() || "G";
   }
 
-  function makeInitials(name) {
-    return escapeHTML((String(name || "G").trim()[0] || "G").toUpperCase());
+  function profileName(profile) {
+    return profile?.display_name ||
+      profile?.username ||
+      profile?.email ||
+      "GARAGE member";
   }
 
-  function setButtonBusy(button, busy, busyText, idleText) {
-    if (!button) return;
-    button.disabled = busy;
-    button.textContent = busy ? busyText : idleText;
+  function profileLabel(profile) {
+    const name = profileName(profile);
+    return profile?.username && profile?.username !== name
+      ? `${name} (@${profile.username})`
+      : name;
   }
 
-  function makeUniqueId() {
-    return window.crypto?.randomUUID?.() ||
-      `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
+  function mediaHTML(url, type) {
+    if (!url) return "";
+    const safeURL = escapeHTML(url);
 
-  function getFileExtension(file) {
-    const extensions = {
-      "image/jpeg": "jpg",
-      "image/png": "png",
-      "image/webp": "webp",
-      "image/gif": "gif",
-      "video/mp4": "mp4",
-      "video/webm": "webm",
-      "video/quicktime": "mov"
-    };
-    return extensions[file?.type] || "";
-  }
-
-  function isVideoUrl(url) {
-    return /\.(mp4|webm|mov)(?:[?#].*)?$/i.test(url || "");
-  }
-
-  async function getSignedInUser() {
-    if (!client?.auth) return null;
-    const { data, error } = await client.auth.getUser();
-    if (error) {
-      console.error("GARAGE authentication error:", error.message);
-      return null;
+    if (type === "video") {
+      return `<video class="post-media" src="${safeURL}" controls preload="metadata"></video>`;
     }
-    return data.user || null;
+
+    return `<img class="post-media" src="${safeURL}" alt="Community post media" loading="lazy">`;
   }
 
-  function updateAuthUI() {
-    const signedIn = Boolean(currentUser);
+  function renderAuth() {
+    const signedIn = Boolean(state.user);
+    const name = profileName(state.profile || {
+      email: state.user?.email
+    });
+
     document.documentElement.dataset.authState =
       signedIn ? "signed-in" : "guest";
 
@@ -138,2283 +188,998 @@
       element.hidden = signedIn;
     });
 
-    const status = $("account-status");
-    if (status) {
-      status.textContent = signedIn
-        ? `Signed in as ${getDisplayName(currentProfile, currentUser.id)}`
-        : "Browsing as a guest";
+    setText(
+      "account-status",
+      signedIn ? `Signed in as ${name}` : "Not signed in"
+    );
+
+    const authLink = $("auth-link");
+    if (authLink) {
+      authLink.textContent = signedIn ? name : "Sign in";
+      authLink.hidden = signedIn;
     }
 
-    if ($("auth-link")) $("auth-link").hidden = signedIn;
-    if ($("logout-btn")) $("logout-btn").hidden = !signedIn;
-    if ($("guestPostPrompt")) $("guestPostPrompt").hidden = signedIn;
-    if ($("guestMarketPrompt")) $("guestMarketPrompt").hidden = signedIn;
-  }
+    const logoutButton = $("logout-btn");
+    if (logoutButton) logoutButton.hidden = !signedIn;
 
-  async function loadCurrentUser() {
-    currentUser = null;
-    currentProfile = null;
-
-    if (!client?.auth) {
-      console.error("GARAGE: Supabase client is unavailable.");
-      updateAuthUI();
-      return null;
+    const profileButton = $("profileBtn");
+    if (profileButton) {
+      profileButton.textContent = signedIn ? name : "Profile";
     }
 
-    const { data, error } = await client.auth.getSession();
-    if (error) console.error("GARAGE session error:", error.message);
+    const guestPostPrompt = $("guestPostPrompt");
+    if (guestPostPrompt) guestPostPrompt.hidden = signedIn;
 
-    currentUser = data?.session?.user || null;
+    const guestMarketPrompt = $("guestMarketPrompt");
+    if (guestMarketPrompt) guestMarketPrompt.hidden = signedIn;
 
-    if (currentUser) {
-      const { data: profile, error: profileError } = await client
-        .from("profiles")
-        .select("id, username, display_name, bio, favorite_car, avatar_url")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error("GARAGE profile error:", profileError.message);
-      }
-      currentProfile = profile || null;
-    }
-
-    updateAuthUI();
-    return currentUser;
+    updateMessageRecipientOptions();
   }
 
-  function watchAuthenticationChanges() {
-    if (!client?.auth || authSubscription) return;
-
-    const { data } = client.auth.onAuthStateChange((_event, session) => {
-      const nextUser = session?.user || null;
-      currentUser = nextUser;
-      currentProfile = null;
-      likedPostIds = new Set();
-      activeConversationId = null;
-      messageLoadNumber++;
-
-      // Defer network requests until the auth callback has returned.
-      Promise.resolve().then(async () => {
-        if (nextUser) {
-          const { data: profile, error } = await client
-            .from("profiles")
-            .select("id, username, display_name, bio, favorite_car, avatar_url")
-            .eq("id", nextUser.id)
-            .maybeSingle();
-
-          if (error) {
-            console.error("GARAGE profile refresh error:", error.message);
-          }
-          if (currentUser?.id !== nextUser.id) return;
-          currentProfile = profile || null;
-        }
-
-        updateAuthUI();
-        await loadCommunityPosts();
-
-        if ($("messageTo")) {
-          await loadMessageMembers();
-        } else {
-          showConversationMessage("Please sign in to use private messages.");
-        }
-      });
-    });
-
-    authSubscription = data?.subscription || null;
-  }
-
-  async function loadCommunityPosts() {
-    if (!$("feed")) return;
-
-    if (!client) {
-      showStatus("Supabase is not initialized. Check supabase-client.js.");
+  async function loadProfile() {
+    if (!state.user) {
+      state.profile = null;
+      renderAuth();
       return;
     }
 
-    showStatus("Loading community posts...");
+    const { data, error } = await client
+      .from("profiles")
+      .select("id, username, display_name, bio, avatar_url")
+      .eq("id", state.user.id)
+      .maybeSingle();
 
-    try {
-      const { data, error } = await client
-        .from("posts")
-        .select("id, user_id, caption, image_url, created_at, is_community")
-        .eq("is_community", true)
-        .order("created_at", { ascending: false });
+    if (error) {
+      console.error("GARAGE profile load:", error);
+      state.profile = {
+        id: state.user.id,
+        username: state.user.email?.split("@")[0] || "member",
+        display_name: state.user.email || "GARAGE member"
+      };
+      renderAuth();
+      return;
+    }
 
-      if (error) throw error;
+    state.profile = data;
 
-      const posts = data || [];
-      const postIds = posts.map((post) => post.id);
-      const userIds = [...new Set(
-        posts.map((post) => post.user_id).filter(Boolean)
-      )];
+    // Create a basic profile if this account has none yet.
+    if (!data) {
+      const username = (
+        state.user.user_metadata?.username ||
+        state.user.email?.split("@")[0] ||
+        `member_${state.user.id.slice(0, 8)}`
+      ).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30);
 
-      const profilesById = {};
-      const likesByPost = {};
-      const commentsByPost = {};
-      const userLikes = new Set();
+      const { data: created, error: insertError } = await client
+        .from("profiles")
+        .upsert({
+          id: state.user.id,
+          username,
+          display_name:
+            state.user.user_metadata?.display_name ||
+            state.user.email?.split("@")[0] ||
+            "GARAGE member"
+        }, { onConflict: "id" })
+        .select("id, username, display_name, bio, avatar_url")
+        .maybeSingle();
 
-      posts.forEach((post) => {
-        likesByPost[post.id] = 0;
-        commentsByPost[post.id] = [];
-      });
-
-      if (userIds.length) {
-        const { data: profiles, error: profileError } = await client
-          .from("profiles")
-          .select("id, username, display_name, avatar_url, favorite_car")
-          .in("id", userIds);
-
-        if (profileError) {
-          console.warn("GARAGE author lookup:", profileError.message);
-        }
-
-        (profiles || []).forEach((profile) => {
-          profilesById[profile.id] = profile;
-        });
+      if (insertError) {
+        console.warn("GARAGE profile creation:", insertError.message);
+      } else {
+        state.profile = created;
       }
+    }
 
-      if (postIds.length) {
-        const { data: likes, error: likesError } = await client
-          .from("post_likes")
-          .select("post_id, user_id")
-          .in("post_id", postIds);
+    renderAuth();
+  }
 
-        if (likesError) throw likesError;
+  async function loadProfiles() {
+    const { data, error } = await client
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .order("username", { ascending: true })
+      .limit(500);
 
-        (likes || []).forEach((like) => {
-          likesByPost[like.post_id] =
-            (likesByPost[like.post_id] || 0) + 1;
+    if (error) {
+      console.error("GARAGE member directory:", error);
+      return;
+    }
 
-          if (currentUser && like.user_id === currentUser.id) {
-            userLikes.add(like.post_id);
-          }
-        });
+    state.profiles = data || [];
+    renderMembers();
+    updateMessageRecipientOptions();
+  }
 
-        const { data: comments, error: commentsError } = await client
-          .from("post_comments")
-          .select("id, post_id, user_id, content, created_at")
-          .in("post_id", postIds)
-          .order("created_at", { ascending: true });
+  function renderMembers() {
+    const members = $("members");
+    const directory = $("memberDirectory");
 
-        if (commentsError) throw commentsError;
+    const html = state.profiles
+      .filter((profile) => profile.id !== currentUserId())
+      .map((profile) => `
+        <article class="member-card">
+          <div class="member-avatar">${escapeHTML(initials(profileName(profile)))}</div>
+          <div class="member-info">
+            <strong>${escapeHTML(profileName(profile))}</strong>
+            <div>@${escapeHTML(profile.username || "member")}</div>
+          </div>
+          <button type="button"
+            data-message-member="${escapeHTML(profile.id)}">
+            Message
+          </button>
+          <button type="button"
+            data-follow-member="${escapeHTML(profile.id)}">
+            ${getLocal(STORAGE_KEYS.follows, []).includes(profile.id)
+              ? "Unfollow" : "Follow"}
+          </button>
+        </article>
+      `).join("");
 
-        const commentUserIds = [...new Set(
-          (comments || []).map((comment) => comment.user_id).filter(Boolean)
-        )];
+    if (members) members.innerHTML = html || "<p>No other members found.</p>";
+    if (directory) directory.innerHTML = html || "<p>No other members found.</p>";
+  }
 
-        const commentProfiles = {};
+  function updateMessageRecipientOptions() {
+    const select = $("messageTo");
+    if (!select) return;
 
-        if (commentUserIds.length) {
-          const { data: profiles, error: cpError } = await client
-            .from("profiles")
-            .select("id, username, display_name")
-            .in("id", commentUserIds);
+    const previousValue = select.value;
+    const options = state.profiles
+      .filter((profile) => profile.id !== currentUserId())
+      .map((profile) => `
+        <option value="${escapeHTML(profile.id)}">
+          ${escapeHTML(profileLabel(profile))}
+        </option>
+      `).join("");
 
-          if (cpError) {
-            console.warn("GARAGE comment author lookup:", cpError.message);
-          }
+    select.innerHTML =
+      `<option value="">Choose a member…</option>${options}`;
 
-          (profiles || []).forEach((profile) => {
-            commentProfiles[profile.id] = profile;
-          });
-        }
-
-        (comments || []).forEach((comment) => {
-          const profile = commentProfiles[comment.user_id];
-
-          commentsByPost[comment.post_id].push({
-            id: comment.id,
-            userId: comment.user_id,
-            author: profile?.display_name ||
-              profile?.username || "Garage Member",
-            text: comment.content,
-            createdAt: comment.created_at
-          });
-        });
-      }
-
-      communityPosts = posts.map((post) => ({
-        ...post,
-        authorProfile: profilesById[post.user_id] || null
-      }));
-
-      postLikeCounts = likesByPost;
-      postComments = commentsByPost;
-      likedPostIds = userLikes;
-
-      renderFeed();
-    } catch (error) {
-      console.error("GARAGE community feed error:", error);
-      showStatus(
-        "Could not load community posts: " +
-        (error.message || "Unknown error")
-      );
+    if (state.profiles.some((p) => p.id === previousValue)) {
+      select.value = previousValue;
     }
   }
 
-  function renderPostMedia(mediaUrl) {
-    if (!mediaUrl) return "";
-    const safeUrl = escapeHTML(mediaUrl);
+  // -------------------- Public community feed --------------------
 
-    return isVideoUrl(mediaUrl)
-      ? `<video class="post-media" controls playsinline preload="metadata" src="${safeUrl}"></video>`
-      : `<img class="post-media" loading="lazy" src="${safeUrl}" alt="Photo shared in the GARAGE community">`;
+  async function loadFeed() {
+    const feed = $("feed");
+    if (!feed) return;
+
+    feed.innerHTML = "<p>Loading community posts…</p>";
+
+    const { data, error } = await client
+      .from("posts")
+      .select(`
+        id, user_id, content, media_url, media_type, created_at,
+        profiles:user_id (id, username, display_name, avatar_url),
+        likes (user_id),
+        comments (id, user_id, content, created_at,
+          profiles:user_id (username, display_name))
+      `)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("GARAGE feed:", error);
+      feed.innerHTML = "<p>Could not load posts. Check Supabase tables and RLS.</p>";
+      return;
+    }
+
+    state.posts = data || [];
+    renderFeed();
   }
 
   function renderFeed() {
     const feed = $("feed");
     if (!feed) return;
 
-    const query = ($("search")?.value || "").trim().toLowerCase();
+    const userId = currentUserId();
 
-    const visiblePosts = communityPosts.filter((post) => {
-      const profile = post.authorProfile;
-
-      return [
-        getDisplayName(profile, post.user_id),
-        profile?.favorite_car || "",
-        profile?.username || "",
-        post.caption || ""
-      ].join(" ").toLowerCase().includes(query);
-    });
-
-    if (!visiblePosts.length) {
-      showStatus(
-        communityPosts.length
-          ? "No matching posts. Try another search."
-          : "No public community posts yet. Be the first to share a build!"
-      );
+    if (!state.posts.length) {
+      feed.innerHTML = "<p>No posts yet. Be the first to share something.</p>";
       return;
     }
 
-    feed.innerHTML = visiblePosts.map((post) => {
-      const profile = post.authorProfile;
-      const name = getDisplayName(profile, post.user_id);
-
-      const avatar = profile?.avatar_url
-        ? `<img class="avatar" src="${escapeHTML(profile.avatar_url)}" alt="${escapeHTML(name)}'s avatar" loading="lazy" style="object-fit:cover;">`
-        : `<div class="avatar" aria-hidden="true">${makeInitials(name)}</div>`;
-
-      const caption = post.caption
-        ? `<div class="post-copy">${escapeHTML(post.caption).replace(/\n/g, "<br>")}</div>`
-        : "";
-
-      const comments = postComments[post.id] || [];
-
-      const commentsHTML = comments.map((comment) => `
-        <div class="comment">
-          <strong>${escapeHTML(comment.author)}:</strong>
-          ${escapeHTML(comment.text).replace(/\n/g, "<br>")}
-          <small class="muted">${escapeHTML(formatDate(comment.createdAt))}</small>
-        </div>
-      `).join("");
-
-      const liked = likedPostIds.has(post.id);
-
-      const commentControls = currentUser
-        ? `<form class="comment-form" data-comment="${escapeHTML(post.id)}">
-             <input name="comment" type="text" maxlength="1000" placeholder="Write a comment..." aria-label="Write a comment" required>
-             <button class="action" type="submit">Send</button>
-           </form>`
-        : `<p class="guest-inline"><a href="auth.html">Sign in</a> to leave a comment.</p>`;
+    feed.innerHTML = state.posts.map((post) => {
+      const author = post.profiles || {};
+      const likes = post.likes || [];
+      const comments = post.comments || [];
+      const liked = likes.some((like) => like.user_id === userId);
 
       return `
-        <article class="post" data-post-id="${escapeHTML(post.id)}">
-          <div class="post-head">
-            ${avatar}
-            <div>
-              <strong>${escapeHTML(name)}</strong>
-              <p class="muted">
-                ${escapeHTML(profile?.favorite_car || "Car enthusiast")}
-                ${post.created_at ? ` · ${escapeHTML(formatDate(post.created_at))}` : ""}
-              </p>
+        <article class="community-post" data-post-id="${escapeHTML(post.id)}">
+          <header class="post-header">
+            <div class="member-avatar">
+              ${escapeHTML(initials(profileName(author)))}
             </div>
-          </div>
+            <div>
+              <strong>${escapeHTML(profileName(author))}</strong>
+              <div class="post-date">${escapeHTML(formatDate(post.created_at))}</div>
+            </div>
+          </header>
 
-          ${caption}
-          ${renderPostMedia(post.image_url)}
+          ${post.content
+            ? `<p class="post-content">${escapeHTML(post.content).replace(/\n/g, "<br>")}</p>`
+            : ""}
+
+          ${mediaHTML(post.media_url, post.media_type)}
 
           <div class="post-actions">
-            <button class="action ${liked ? "liked" : ""}" type="button"
-              data-like="${escapeHTML(post.id)}"
-              aria-pressed="${liked ? "true" : "false"}"
-              ${currentUser ? "" : 'title="Sign in to like posts"'}>
-              ${liked ? "♥ Liked" : "♡ Like"} · ${postLikeCounts[post.id] || 0}
+            <button type="button" data-like-post="${escapeHTML(post.id)}"
+              ${!userId ? 'title="Sign in to like"' : ""}>
+              ${liked ? "♥ Liked" : "♡ Like"} (${likes.length})
             </button>
-
-            <button class="action" type="button"
-              data-focus-comment="${escapeHTML(post.id)}">
-              Comments · ${comments.length}
-            </button>
+            <span>${comments.length} comment${comments.length === 1 ? "" : "s"}</span>
           </div>
 
-          <div class="comment-list">${commentsHTML}</div>
-          ${commentControls}
+          <div class="post-comments">
+            ${comments.map((comment) => `
+              <div class="post-comment">
+                <strong>${escapeHTML(
+                  profileName(comment.profiles || {})
+                )}</strong>
+                ${escapeHTML(comment.content)}
+              </div>
+            `).join("")}
+          </div>
+
+          <form data-comment-form="${escapeHTML(post.id)}" class="comment-form">
+            <input name="comment" type="text" maxlength="2000"
+              placeholder="${userId ? "Write a comment…" : "Sign in to comment"}"
+              required ${userId ? "" : "disabled"}>
+            <button type="submit" ${userId ? "" : "disabled"}>Comment</button>
+          </form>
         </article>
       `;
     }).join("");
   }
 
-  function clearMediaPreview({ clearInput = true } = {}) {
-    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+  async function createPost(event) {
+    event.preventDefault();
+    if (!requireUser()) return;
 
-    mediaPreviewUrl = "";
-    selectedMedia = null;
+    const form = event.currentTarget;
+    const content = textOf($("postText")?.value);
+    const file = $("postMedia")?.files?.[0];
 
-    if (clearInput && $("postMedia")) $("postMedia").value = "";
-    if ($("fileName")) $("fileName").textContent = "No media selected";
-    $("mediaPreview")?.replaceChildren();
+    if (!content && !file) {
+      toast("Write something or select a photo/video.");
+      return;
+    }
+
+    setBusy(form, true, "Publishing…");
+
+    try {
+      let mediaURL = null;
+      let mediaType = null;
+
+      if (file) {
+        const allowed = [
+          "image/jpeg", "image/png", "image/webp", "image/gif",
+          "video/mp4", "video/webm", "video/quicktime"
+        ];
+
+        if (!allowed.includes(file.type)) {
+          throw new Error("Choose a supported image or video file.");
+        }
+
+        const maxBytes = file.type.startsWith("video/")
+          ? 50 * 1024 * 1024
+          : 10 * 1024 * 1024;
+
+        if (file.size > maxBytes) {
+          throw new Error(file.type.startsWith("video/")
+            ? "Videos must be 50 MB or smaller."
+            : "Images must be 10 MB or smaller.");
+        }
+
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${state.user.id}/${crypto.randomUUID()}-${safeName}`;
+
+        const { error: uploadError } = await client.storage
+          .from("post-images")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = client.storage
+          .from("post-images")
+          .getPublicUrl(path);
+
+        mediaURL = publicData.publicUrl;
+        mediaType = file.type.startsWith("video/") ? "video" : "image";
+      }
+
+      const { error } = await client.from("posts").insert({
+        user_id: state.user.id,
+        content: content || "",
+        media_url: mediaURL,
+        media_type: mediaType
+      });
+
+      if (error) throw error;
+
+      form.reset();
+      if ($("fileName")) $("fileName").textContent = "No file selected";
+      if ($("mediaPreview")) $("mediaPreview").innerHTML = "";
+
+      toast("Post published.");
+      await loadFeed();
+    } catch (error) {
+      console.error("GARAGE publish post:", error);
+      toast(error.message || "Could not publish the post.");
+    } finally {
+      setBusy(form, false);
+    }
   }
 
-  function setupMediaPicker() {
+  async function toggleLike(postId) {
+    if (!requireUser()) return;
+
+    const existingPost = state.posts.find((post) => post.id === postId);
+    const alreadyLiked = (existingPost?.likes || [])
+      .some((like) => like.user_id === state.user.id);
+
+    if (alreadyLiked) {
+      const { error } = await client.from("likes")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", state.user.id);
+
+      if (error) {
+        console.error("GARAGE unlike:", error);
+        toast("Could not remove like.");
+        return;
+      }
+    } else {
+      const { error } = await client.from("likes").insert({
+        post_id: postId,
+        user_id: state.user.id
+      });
+
+      if (error && error.code !== "23505") {
+        console.error("GARAGE like:", error);
+        toast("Could not like this post.");
+        return;
+      }
+    }
+
+    await loadFeed();
+  }
+
+  async function addComment(postId, content) {
+    if (!requireUser()) return;
+
+    const { error } = await client.from("comments").insert({
+      post_id: postId,
+      user_id: state.user.id,
+      content
+    });
+
+    if (error) {
+      console.error("GARAGE comment:", error);
+      toast("Could not add comment.");
+      return;
+    }
+
+    await loadFeed();
+  }
+
+  function setupMediaPreview() {
     const input = $("postMedia");
     if (!input) return;
 
-    input.addEventListener("change", (event) => {
-      const file = event.target.files?.[0] || null;
-      clearMediaPreview({ clearInput: false });
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      const preview = $("mediaPreview");
+      const fileName = $("fileName");
+
+      if (fileName) {
+        fileName.textContent = file ? file.name : "No file selected";
+      }
+
+      if (!preview) return;
+      preview.innerHTML = "";
+
       if (!file) return;
 
-      if (!getFileExtension(file)) {
-        input.value = "";
-        notify("Use JPG, PNG, WebP, GIF, MP4, WebM, or MOV.");
-        return;
-      }
-
-      if (file.size > 8 * 1024 * 1024) {
-        input.value = "";
-        notify("Choose a photo or video no larger than 8 MB.");
-        return;
-      }
-
-      selectedMedia = file;
-      mediaPreviewUrl = URL.createObjectURL(file);
-
-      if ($("fileName")) $("fileName").textContent = file.name;
-
-      const preview = $("mediaPreview");
-      if (!preview) return;
-
-      preview.replaceChildren();
-
-      const element = document.createElement(
+      const url = URL.createObjectURL(file);
+      const media = document.createElement(
         file.type.startsWith("video/") ? "video" : "img"
       );
 
-      if (element.tagName === "VIDEO") {
-        element.controls = true;
-        element.playsInline = true;
-        element.preload = "metadata";
-      } else {
-        element.alt = "Selected media preview";
-      }
-
-      element.className = "post-media";
-      element.src = mediaPreviewUrl;
-      preview.appendChild(element);
+      media.src = url;
+      media.className = "media-preview";
+      if (media.tagName === "VIDEO") media.controls = true;
+      media.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+      preview.appendChild(media);
     });
   }
 
-  async function publishPost(event) {
-    event.preventDefault();
-    if (isPublishingPost) return;
-
-    if (!client?.auth) {
-      notify("Supabase is not initialized.");
-      return;
-    }
-
-    const caption = $("postText")?.value.trim() || "";
-
-    if (!caption && !selectedMedia) {
-      notify("Write something or choose a photo or video.");
-      return;
-    }
-
-    const { data, error: sessionError } = await client.auth.getSession();
-
-    if (sessionError) {
-      notify("Could not check your login. Please try again.");
-      return;
-    }
-
-    const user = data?.session?.user;
-
-    if (!user) {
-      notify("Please sign in before publishing.");
-      window.location.href = "auth.html";
-      return;
-    }
-
-    const form = $("postForm");
-    const button = form?.querySelector('button[type="submit"]');
-
-    isPublishingPost = true;
-    setButtonBusy(button, true, "Publishing...", "Publish post ↗");
-
-    let uploadedPath = null;
-
-    try {
-      let mediaUrl = null;
-
-      if (selectedMedia) {
-        const extension = getFileExtension(selectedMedia);
-        if (!extension) throw new Error("Unsupported media type.");
-
-        uploadedPath = `${user.id}/${makeUniqueId()}.${extension}`;
-
-        const { error: uploadError } = await client.storage
-          .from("post-images")
-          .upload(uploadedPath, selectedMedia, {
-            contentType: selectedMedia.type,
-            upsert: false
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicData } = client.storage
-          .from("post-images")
-          .getPublicUrl(uploadedPath);
-
-        mediaUrl = publicData?.publicUrl || null;
-        if (!mediaUrl) throw new Error("Could not create the media URL.");
-      }
-
-      const { error: insertError } = await client.from("posts").insert({
-        user_id: user.id,
-        caption,
-        image_url: mediaUrl,
-        is_community: true
-      });
-
-      if (insertError) throw insertError;
-
-      if ($("postText")) $("postText").value = "";
-      clearMediaPreview();
-      await loadCommunityPosts();
-      notify("Your post was published!");
-    } catch (error) {
-      console.error("GARAGE publish error:", error);
-
-      if (uploadedPath) {
-        const { error: cleanupError } = await client.storage
-          .from("post-images")
-          .remove([uploadedPath]);
-
-        if (cleanupError) {
-          console.warn("GARAGE upload cleanup error:", cleanupError.message);
-        }
-      }
-
-      notify("Could not publish: " + (error.message || "Unknown error."));
-    } finally {
-      isPublishingPost = false;
-      setButtonBusy(button, false, "Publishing...", "Publish post ↗");
-    }
-  }
-
-  function setupFeedInteractions() {
-    const feed = $("feed");
-    if (!feed) return;
-
-    feed.addEventListener("click", async (event) => {
-      const likeButton = event.target.closest("[data-like]");
-      const commentButton = event.target.closest("[data-focus-comment]");
-
-      if (likeButton) {
-        event.preventDefault();
-        if (likeButton.disabled) return;
-
-        const user = await getSignedInUser();
-
-        if (!user) {
-          notify("Please sign in to like posts.");
-          return;
-        }
-
-        const postId = likeButton.dataset.like;
-        const wasLiked = likedPostIds.has(postId);
-        likeButton.disabled = true;
-
-        try {
-          if (wasLiked) {
-            const { error } = await client.from("post_likes")
-              .delete()
-              .eq("post_id", postId)
-              .eq("user_id", user.id);
-
-            if (error) throw error;
-
-            likedPostIds.delete(postId);
-            postLikeCounts[postId] = Math.max(
-              0, (postLikeCounts[postId] || 0) - 1
-            );
-          } else {
-            const { error } = await client.from("post_likes").insert({
-              post_id: postId,
-              user_id: user.id
-            });
-
-            if (error && error.code !== "23505") throw error;
-            if (!error) {
-              postLikeCounts[postId] = (postLikeCounts[postId] || 0) + 1;
-            }
-            likedPostIds.add(postId);
-          }
-
-          renderFeed();
-        } catch (error) {
-          console.error("GARAGE like error:", error);
-          notify("Could not update like: " + error.message);
-        }
-
-        return;
-      }
-
-      if (commentButton) {
-        const postId = commentButton.dataset.focusComment;
-        const form = Array.from(feed.querySelectorAll("[data-comment]"))
-          .find((item) => item.dataset.comment === postId);
-
-        form?.querySelector('input[name="comment"]')?.focus();
-      }
-    });
-
-    feed.addEventListener("submit", async (event) => {
-      const form = event.target.closest("form[data-comment]");
-      if (!form) return;
-
-      event.preventDefault();
-      if (form.dataset.busy === "true") return;
-
-      const user = await getSignedInUser();
-
-      if (!user) {
-        notify("Please sign in to comment.");
-        return;
-      }
-
-      const input = form.elements.namedItem("comment");
-      const content = input?.value.trim() || "";
-
-      if (!content) return;
-
-      if (content.length > 1000) {
-        notify("Comments must be 1,000 characters or fewer.");
-        return;
-      }
-
-      const postId = form.dataset.comment;
-      const button = form.querySelector('button[type="submit"]');
-
-      form.dataset.busy = "true";
-      if (button) button.disabled = true;
-
-      try {
-        const { error } = await client.from("post_comments").insert({
-          post_id: postId,
-          user_id: user.id,
-          content
-        });
-
-        if (error) throw error;
-
-        input.value = "";
-        await loadCommunityPosts();
-        notify("Comment posted.");
-      } catch (error) {
-        console.error("GARAGE comment error:", error);
-        notify("Could not post comment: " + error.message);
-      } finally {
-        form.dataset.busy = "false";
-        if (button) button.disabled = false;
-      }
-    });
-  }
-
-  function renderMembers() {
-    const container = $("members");
-    if (!container) return;
-
-    container.innerHTML = demoMembers.map((member) => {
-      const following = followed.has(member.name);
-
-      return `<div class="member">
-        <div class="avatar" aria-hidden="true">${escapeHTML(member.avatar)}</div>
-        <div class="member-name">
-          <strong>${escapeHTML(member.name)}</strong>
-          <small>${escapeHTML(member.car)}</small>
-        </div>
-        <button class="action ${following ? "following" : ""}" type="button"
-          data-follow="${escapeHTML(member.name)}"
-          aria-pressed="${following}">
-          ${following ? "Following" : "Follow"}
-        </button>
-      </div>`;
-    }).join("");
-  }
-
-  function setupMemberInteractions() {
-    $("members")?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-follow]");
-      if (!button) return;
-
-      const name = button.dataset.follow;
-      if (followed.has(name)) followed.delete(name);
-      else followed.add(name);
-
-      renderMembers();
-      notify(followed.has(name)
-        ? `Following ${name} locally.`
-        : `Unfollowed ${name} locally.`);
-    });
-  }
-
-  function renderListings() {
-    const container = $("carListings");
-    if (!container) return;
-
-    if (!listings.length) {
-      container.innerHTML =
-        '<p class="muted">No demo listings yet. Add a listing to try this feature.</p>';
-      return;
-    }
-
-    container.innerHTML = listings.map((car) => `
-      <article class="listing-card">
-        <div class="feature-icon" aria-hidden="true">🚘</div>
-        <h3>${escapeHTML(car.name)}</h3>
-        <p class="price">$${Number(car.price).toLocaleString("en-US")}</p>
-        <p>${escapeHTML(car.details || "No additional details provided.")}</p>
-      </article>
-    `).join("");
-  }
-
-  function setupListingForm() {
-    $("listingForm")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-
-      const name = $("carName")?.value.trim() || "";
-      const price = Number($("carPrice")?.value);
-      const details = $("carDetails")?.value.trim() || "";
-
-      if (!name || !Number.isFinite(price) || price < 0) {
-        notify("Enter a valid car name and price.");
-        return;
-      }
-
-      listings.unshift({ name, price, details });
-      event.currentTarget.reset();
-      renderListings();
-      notify("Demo listing added. It is not saved to Supabase.");
-    });
-  }
-
-  function showConversationMessage(message, isError = false) {
-    const conversation = $("conversation");
-    if (!conversation) return;
-
-    conversation.replaceChildren();
-    const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent = message;
-
-    if (isError) p.style.color = "#ff7777";
-    conversation.appendChild(p);
-  }
-
-  function memberLabel(profile) {
-    return profile.display_name || profile.username ||
-      `Member ${String(profile.id).slice(0, 6)}`;
-  }
-
-  async function loadMessageMembers() {
-    const select = $("messageTo");
-    if (!select || !client) return;
-
-    const thisLoad = ++memberLoadNumber;
-    const previousValue = select.value;
-
-    select.disabled = true;
-    select.replaceChildren();
-
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Loading members...";
-    select.appendChild(placeholder);
-
-    try {
-      const user = await getSignedInUser();
-      if (thisLoad !== memberLoadNumber) return;
-
-      if (!user) {
-        placeholder.textContent = "Sign in to message members";
-        showConversationMessage("Please sign in to use private messages.");
-        return;
-      }
-
-      const { data, error } = await client.from("profiles")
-        .select("id, username, display_name")
-        .neq("id", user.id)
-        .order("username", { ascending: true });
-
-      if (error) throw error;
-      if (thisLoad !== memberLoadNumber) return;
-
-      select.replaceChildren();
-
-      const first = document.createElement("option");
-      first.value = "";
-      first.textContent = data?.length
-        ? "Choose a member..."
-        : "No other members found";
-      select.appendChild(first);
-
-      for (const profile of data || []) {
-        const option = document.createElement("option");
-        option.value = profile.id;
-        option.textContent = memberLabel(profile);
-        select.appendChild(option);
-      }
-
-      select.disabled = !(data && data.length);
-
-      const requested = new URL(window.location.href).searchParams.get("to");
-      const desired = requested || previousValue;
-      const validRecipient = Array.from(select.options)
-        .some((option) => option.value === desired);
-
-      if (validRecipient && desired) {
-        select.value = desired;
-        await loadConversation();
-      } else {
-        activeConversationId = null;
-        showConversationMessage("Choose a member to open a conversation.");
-      }
-    } catch (error) {
-      if (thisLoad !== memberLoadNumber) return;
-
-      console.error("GARAGE member list error:", error);
-      select.replaceChildren();
-
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Could not load members";
-      select.appendChild(option);
-
-      showConversationMessage("Could not load members: " + error.message, true);
-    }
-  }
-
-  async function loadConversation() {
-    const conversation = $("conversation");
-    const select = $("messageTo");
-    if (!conversation || !select) return;
-
-    const user = await getSignedInUser();
-
-    if (!user) {
-      activeConversationId = null;
-      showConversationMessage("Please sign in to use private messages.");
-      return;
-    }
-
-    const recipientId = select.value;
-
-    if (!recipientId) {
-      activeConversationId = null;
-      messageLoadNumber++;
-      showConversationMessage("Choose a member to open a conversation.");
-      return;
-    }
-
-    if (recipientId === user.id) {
-      showConversationMessage("You cannot message yourself.", true);
-      return;
-    }
-
-    activeConversationId = recipientId;
-    const thisLoad = ++messageLoadNumber;
-    showConversationMessage("Loading conversation...");
-
-    try {
-      const { data, error } = await client.from("messages")
-        .select("id, sender_id, recipient_id, content, created_at, read_at")
-        .or(
-          `and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`
-        )
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      if (thisLoad !== messageLoadNumber ||
-          activeConversationId !== recipientId) return;
-
-      const messages = data || [];
-      conversation.replaceChildren();
-
-      if (!messages.length) {
-        const p = document.createElement("p");
-        p.className = "muted";
-        p.textContent = "No messages yet. Say hello!";
-        conversation.appendChild(p);
-      }
-
-      for (const message of messages) {
-        const article = document.createElement("article");
-        article.className = "message " +
-          (message.sender_id === user.id
-            ? "message-own"
-            : "message-incoming");
-
-        const body = document.createElement("p");
-        body.textContent = message.content || "";
-
-        const meta = document.createElement("small");
-        meta.className = "muted";
-        meta.textContent =
-          `${message.sender_id === user.id ? "You" : "Member"} · ${formatDate(message.created_at)}${message.sender_id === user.id && message.read_at ? " · Read" : ""}`;
-
-        article.append(body, meta);
-        conversation.appendChild(article);
-      }
-
-      conversation.scrollTop = conversation.scrollHeight;
-
-      const unreadIds = messages
-        .filter((message) =>
-          message.recipient_id === user.id && !message.read_at
-        )
-        .map((message) => message.id);
-
-      if (unreadIds.length) {
-        const { error: readError } = await client.from("messages")
-          .update({ read_at: new Date().toISOString() })
-          .in("id", unreadIds)
-          .eq("recipient_id", user.id);
-
-        if (readError) {
-          console.warn("GARAGE read status error:", readError.message);
-        }
-      }
-    } catch (error) {
-      console.error("GARAGE conversation error:", error);
-      if (thisLoad === messageLoadNumber) {
-        showConversationMessage("Could not load messages: " + error.message, true);
-      }
-    }
-  }
-
-  function setupMessages() {
-    const select = $("messageTo");
-    const form = $("messageForm");
-
-    select?.addEventListener("change", loadConversation);
-
-    form?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      if (messageBusy) return;
-
-      const user = await getSignedInUser();
-
-      if (!user) {
-        notify("Please sign in to send private messages.");
-        window.location.href = "auth.html";
-        return;
-      }
-
-      const recipientId = select?.value || "";
-      const input = $("messageText");
-      const content = input?.value.trim() || "";
-
-      if (!recipientId) {
-        notify("Choose a member first.");
-        return;
-      }
-
-      if (recipientId === user.id) {
-        notify("You cannot message yourself.");
-        return;
-      }
-
-      if (!content) {
-        notify("Write a message first.");
-        return;
-      }
-
-      if (content.length > 5000) {
-        notify("Messages must be 5,000 characters or fewer.");
-        return;
-      }
-
-      const button = form.querySelector('button[type="submit"]');
-      messageBusy = true;
-      if (button) button.disabled = true;
-
-      try {
-        const { error } = await client.from("messages").insert({
-          sender_id: user.id,
-          recipient_id: recipientId,
-          content
-        });
-
-        if (error) throw error;
-
-        if (input) input.value = "";
-        await loadConversation();
-        notify("Message sent.");
-      } catch (error) {
-        console.error("GARAGE message send error:", error);
-        notify("Could not send message: " + error.message);
-      } finally {
-        messageBusy = false;
-        if (button) button.disabled = false;
-      }
-    });
-
-    if (select && form) loadMessageMembers();
-  }
-
-  function showPage(pageName) {
-    document.querySelectorAll(".page").forEach((section) => {
-      section.classList.add("hidden");
-    });
-
-    const target = $(`${pageName}Page`);
-
-    if (target) target.classList.remove("hidden");
-    else console.warn(`GARAGE: Could not find page section "${pageName}Page".`);
-
-    document.querySelectorAll(".sidebar .nav[data-page]").forEach((button) => {
-      const active = button.dataset.page === pageName;
-      button.classList.toggle("active", active);
-
-      if (active) button.setAttribute("aria-current", "page");
-      else button.removeAttribute("aria-current");
-    });
-
-    if (pageName === "messages" && $("messageTo")) {
-      loadMessageMembers();
-    }
-  }
-
-  function setupNavigation() {
-    document.querySelectorAll(".sidebar .nav[data-page]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const pageName = button.dataset.page;
-        if (!pageName) return;
-
-        if (pageName === "members") {
-          window.location.href = "members.html";
-          return;
-        }
-
-        showPage(pageName);
-      });
-    });
-
-    $("shareBtn")?.addEventListener("click", () => {
-      showPage("feed");
-      $("postText")?.focus();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-
-    $("search")?.addEventListener("input", () => {
-      renderFeed();
-      if ($("search").value.trim()) showPage("feed");
-    });
-  }
-
-  async function init() {
-    setupNavigation();
-    setupMediaPicker();
-    setupListingForm();
-    setupFeedInteractions();
-    setupMemberInteractions();
-
-    $("postForm")?.addEventListener("submit", publishPost);
-
+  // -------------------- Demo-only follows --------------------
+
+  function toggleFollow(profileId) {
+    const follows = getLocal(STORAGE_KEYS.follows, []);
+    const next = follows.includes(profileId)
+      ? follows.filter((id) => id !== profileId)
+      : [...follows, profileId];
+
+    setLocal(STORAGE_KEYS.follows, next);
     renderMembers();
-    renderListings();
-
-    if (!client) {
-      console.error("GARAGE: Supabase client not found. Check supabase-client.js.");
-      showStatus("Supabase client not found. Check supabase-client.js.");
-      updateAuthUI();
-      return;
-    }
-
-    await loadCurrentUser();
-    watchAuthenticationChanges();
-    setupMessages();
-    await loadCommunityPosts();
-
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("page") === "messages") showPage("messages");
+    toast("Demo follow list updated in this browser.");
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init, { once: true });
-  } else {
-    init();
-  }
+  // -------------------- Demo-only marketplace --------------------
 
-  window.addEventListener("beforeunload", () => {
-    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
-  });
-})();
-          
-    authSubscription = data?.subscription || null;
-  }
+  function loadListings() {
+    const list = $("carListings");
+    if (!list) return;
 
-  async function loadCommunityPosts() {
-    if (!$("feed")) return;
-    if (!client) {
-      showStatus("Supabase is not initialized. Check supabase-client.js.");
-      return;
-    }
-
-    showStatus("Loading community posts...");
-
-    try {
-      const { data, error } = await client.from("posts")
-        .select("id, user_id, caption, image_url, created_at, is_community")
-        .eq("is_community", true)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      const posts = data || [];
-      const postIds = posts.map((post) => post.id);
-      const userIds = [...new Set(
-        posts.map((post) => post.user_id).filter(Boolean)
-      )];
-
-      const profilesById = {};
-      const likesByPost = {};
-      const commentsByPost = {};
-      const userLikes = new Set();
-
-      posts.forEach((post) => {
-        likesByPost[post.id] = 0;
-        commentsByPost[post.id] = [];
-      });
-
-      if (userIds.length) {
-        const { data: profiles, error: profileError } = await client
-          .from("profiles")
-          .select("id, username, display_name, avatar_url, favorite_car")
-          .in("id", userIds);
-
-        if (profileError) {
-          console.warn("GARAGE author lookup:", profileError.message);
-        }
-
-        (profiles || []).forEach((profile) => {
-          profilesById[profile.id] = profile;
-        });
-      }
-
-      if (postIds.length) {
-        const { data: likes, error: likesError } = await client
-          .from("post_likes")
-          .select("post_id, user_id")
-          .in("post_id", postIds);
-
-        if (likesError) throw likesError;
-
-        (likes || []).forEach((like) => {
-          likesByPost[like.post_id] =
-            (likesByPost[like.post_id] || 0) + 1;
-
-          if (currentUser && like.user_id === currentUser.id) {
-            userLikes.add(like.post_id);
-          }
-        });
-
-        const { data: comments, error: commentsError } = await client
-          .from("post_comments")
-          .select("id, post_id, user_id, content, created_at")
-          .in("post_id", postIds)
-          .order("created_at", { ascending: true });
-
-        if (commentsError) throw commentsError;
-
-        const commentUserIds = [...new Set(
-          (comments || []).map((comment) => comment.user_id).filter(Boolean)
-        )];
-
-        const commentProfiles = {};
-
-        if (commentUserIds.length) {
-          const { data: profiles, error: profileError } = await client
-            .from("profiles")
-            .select("id, username, display_name")
-            .in("id", commentUserIds);
-
-          if (profileError) {
-            console.warn("GARAGE comment author lookup:", profileError.message);
-          }
-
-          (profiles || []).forEach((profile) => {
-            commentProfiles[profile.id] = profile;
-          });
-        }
-
-        (comments || []).forEach((comment) => {
-          const profile = commentProfiles[comment.user_id];
-
-          commentsByPost[comment.post_id].push({
-            id: comment.id,
-            userId: comment.user_id,
-            author: profile?.display_name ||
-              profile?.username ||
-              "Garage Member",
-            text: comment.content,
-            createdAt: comment.created_at
-          });
-        });
-      }
-
-      communityPosts = posts.map((post) => ({
-        ...post,
-        authorProfile: profilesById[post.user_id] || null
-      }));
-
-      postLikeCounts = likesByPost;
-      postComments = commentsByPost;
-      likedPostIds = userLikes;
-
-      renderFeed();
-    } catch (error) {
-      console.error("GARAGE community feed error:", error);
-      showStatus(
-        "Could not load community posts: " +
-        (error.message || "Unknown error")
-      );
-    }
-  }
-
-  function renderPostMedia(mediaUrl) {
-    if (!mediaUrl) return "";
-
-    const safeUrl = escapeHTML(mediaUrl);
-
-    return isVideoUrl(mediaUrl)
-      ? `<video class="post-media" controls playsinline preload="metadata" src="${safeUrl}"></video>`
-      : `<img class="post-media" loading="lazy" src="${safeUrl}" alt="Photo shared in the GARAGE community">`;
-  }
-
-  function renderFeed() {
-    const feed = $("feed");
-    if (!feed) return;
-
-    const query = ($("search")?.value || "").trim().toLowerCase();
-
-    const visiblePosts = communityPosts.filter((post) => {
-      const profile = post.authorProfile;
-
-      return [
-        getDisplayName(profile, post.user_id),
-        profile?.favorite_car || "",
-        profile?.username || "",
-        post.caption || ""
-      ].join(" ").toLowerCase().includes(query);
-    });
-
-    if (!visiblePosts.length) {
-      showStatus(
-        communityPosts.length
-          ? "No matching posts. Try another search."
-          : "No public community posts yet. Be the first to share a build!"
-      );
-      return;
-    }
-
-    feed.innerHTML = visiblePosts.map((post) => {
-      const profile = post.authorProfile;
-      const name = getDisplayName(profile, post.user_id);
-
-      const avatar = profile?.avatar_url
-        ? `<img class="avatar" src="${escapeHTML(profile.avatar_url)}" alt="${escapeHTML(name)}'s avatar" loading="lazy" style="object-fit:cover;">`
-        : `<div class="avatar" aria-hidden="true">${makeInitials(name)}</div>`;
-
-      const caption = post.caption
-        ? `<div class="post-copy">${escapeHTML(post.caption).replace(/\n/g, "<br>")}</div>`
-        : "";
-
-      const comments = postComments[post.id] || [];
-
-      const commentsHTML = comments.map((comment) => `
-        <div class="comment">
-          <strong>${escapeHTML(comment.author)}:</strong>
-          ${escapeHTML(comment.text).replace(/\n/g, "<br>")}
-          <small class="muted">${escapeHTML(formatDate(comment.createdAt))}</small>
-        </div>
-      `).join("");
-
-      const liked = likedPostIds.has(post.id);
-
-      const commentControls = currentUser
-        ? `<form class="comment-form" data-comment="${escapeHTML(post.id)}">
-             <input name="comment" type="text" maxlength="1000"
-               placeholder="Write a comment..."
-               aria-label="Write a comment" required>
-             <button class="action" type="submit">Send</button>
-           </form>`
-        : `<p class="guest-inline"><a href="auth.html">Sign in</a> to leave a comment.</p>`;
-
-      return `
-        <article class="post" data-post-id="${escapeHTML(post.id)}">
-          <div class="post-head">
-            ${avatar}
-            <div>
-              <strong>${escapeHTML(name)}</strong>
-              <p class="muted">
-                ${escapeHTML(profile?.favorite_car || "Car enthusiast")}
-                ${post.created_at
-                  ? ` · ${escapeHTML(formatDate(post.created_at))}`
-                  : ""}
-              </p>
-            </div>
-          </div>
-
-          ${caption}
-          ${renderPostMedia(post.image_url)}
-
-          <div class="post-actions">
-            <button class="action ${liked ? "liked" : ""}"
-              type="button"
-              data-like="${escapeHTML(post.id)}"
-              aria-pressed="${liked ? "true" : "false"}"
-              ${currentUser ? "" : 'title="Sign in to like posts"'}>
-              ${liked ? "♥ Liked" : "♡ Like"} · ${postLikeCounts[post.id] || 0}
-            </button>
-
-            <button class="action" type="button"
-              data-focus-comment="${escapeHTML(post.id)}">
-              Comments · ${comments.length}
-            </button>
-          </div>
-
-          <div class="comment-list">${commentsHTML}</div>
-          ${commentControls}
-        </article>
-      `;
-    }).join("");
-  }
-
-  function clearMediaPreview({ clearInput = true } = {}) {
-    if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
-
-    mediaPreviewUrl = "";
-    selectedMedia = null;
-
-    if (clearInput && $("postMedia")) {
-      $("postMedia").value = "";
-    }
-
-    if ($("fileName")) {
-      $("fileName").textContent = "No media selected";
-    }
-
-    $("mediaPreview")?.replaceChildren();
-  }
-
-  function setupMediaPicker() {
-    const input = $("postMedia");
-    if (!input) return;
-
-    input.addEventListener("change", (event) => {
-      const file = event.target.files?.[0] || null;
-
-      clearMediaPreview({ clearInput: false });
-
-      if (!file) return;
-
-      if (!getFileExtension(file)) {
-        input.value = "";
-        notify("Use JPG, PNG, WebP, GIF, MP4, WebM, or MOV.");
-        return;
-      }
-
-      if (file.size > 8 * 1024 * 1024) {
-        input.value = "";
-        notify("Choose a photo or video no larger than 8 MB.");
-        return;
-      }
-
-      selectedMedia = file;
-      mediaPreviewUrl = URL.createObjectURL(file);
-
-      if ($("fileName")) {
-        $("fileName").textContent = file.name;
-      }
-
-      const preview = $("mediaPreview");
-      if (!preview) return;
-
-      preview.replaceChildren();
-
-      let element;
-
-      if (file.type.startsWith("video/")) {
-        element = document.createElement("video");
-        element.controls = true;
-        element.playsInline = true;
-      } else {
-        element = document.createElement("img");
-        element.alt = "Selected media preview";
-      }
-
-      element.src = mediaPreviewUrl;
-      element.className = "post-media";
-      preview.appendChild(element);
-    });
-  }
-  async function publishPost(event) {
-    event.preventDefault();
-
-    if (isPublishingPost) return;
-
-    if (!client?.auth) {
-      notify("Supabase is not initialized.");
-      return;
-    }
-
-    const caption = $("postText")?.value.trim() || "";
-
-    if (!caption && !selectedMedia) {
-      notify("Write something or choose a photo or video.");
-      return;
-    }
-
-    const { data, error: sessionError } = await client.auth.getSession();
-
-    if (sessionError) {
-      notify("Could not check your login. Please try again.");
-      return;
-    }
-
-    const user = data?.session?.user;
-
-    if (!user) {
-      notify("Please sign in before publishing.");
-      window.location.href = "auth.html";
-      return;
-    }
-
-    const form = $("postForm");
-    const button = form?.querySelector('button[type="submit"]');
-
-    isPublishingPost = true;
-    setButtonBusy(button, true, "Publishing...", "Publish post ↗");
-
-    let uploadedPath = null;
-
-    try {
-      let mediaUrl = null;
-
-      if (selectedMedia) {
-        const extension = getFileExtension(selectedMedia);
-
-        if (!extension) {
-          throw new Error("Unsupported media type.");
-        }
-
-        uploadedPath = `${user.id}/${makeUniqueId()}.${extension}`;
-
-        const { error: uploadError } = await client.storage
-          .from("post-images")
-          .upload(uploadedPath, selectedMedia, {
-            contentType: selectedMedia.type,
-            upsert: false
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicData } = client.storage
-          .from("post-images")
-          .getPublicUrl(uploadedPath);
-
-        mediaUrl = publicData?.publicUrl || null;
-
-        if (!mediaUrl) {
-          throw new Error("Could not create the media URL.");
-        }
-      }
-
-      const { error: insertError } = await client.from("posts").insert({
-        user_id: user.id,
-        caption,
-        image_url: mediaUrl,
-        is_community: true
-      });
-
-      if (insertError) throw insertError;
-
-      if ($("postText")) $("postText").value = "";
-
-      clearMediaPreview();
-      await loadCommunityPosts();
-
-      notify("Your post was published!");
-    } catch (error) {
-      console.error("GARAGE publish error:", error);
-
-      if (uploadedPath) {
-        const { error: cleanupError } = await client.storage
-          .from("post-images")
-          .remove([uploadedPath]);
-
-        if (cleanupError) {
-          console.warn(
-            "GARAGE upload cleanup error:",
-            cleanupError.message
-          );
-        }
-      }
-
-      notify("Could not publish: " + (error.message || "Unknown error."));
-    } finally {
-      isPublishingPost = false;
-
-      setButtonBusy(
-        button,
-        false,
-        "Publishing...",
-        "Publish post ↗"
-      );
-    }
-  }
-
-  function setupFeedInteractions() {
-    const feed = $("feed");
-    if (!feed) return;
-
-    feed.addEventListener("click", async (event) => {
-      const likeButton = event.target.closest("[data-like]");
-      const commentButton = event.target.closest("[data-focus-comment]");
-
-      if (likeButton) {
-        event.preventDefault();
-
-        if (likeButton.disabled) return;
-
-        const user = await getSignedInUser();
-
-        if (!user) {
-          notify("Please sign in to like posts.");
-          return;
-        }
-
-        const postId = likeButton.dataset.like;
-        const wasLiked = likedPostIds.has(postId);
-
-        likeButton.disabled = true;
-
-        try {
-          if (wasLiked) {
-            const { error } = await client
-              .from("post_likes")
-              .delete()
-              .eq("post_id", postId)
-              .eq("user_id", user.id);
-
-            if (error) throw error;
-
-            likedPostIds.delete(postId);
-
-            postLikeCounts[postId] = Math.max(
-              0,
-              (postLikeCounts[postId] || 0) - 1
-            );
-          } else {
-            const { error } = await client
-              .from("post_likes")
-              .insert({
-                post_id: postId,
-                user_id: user.id
-              });
-
-            if (error && error.code !== "23505") {
-              throw error;
-            }
-
-            if (!error) {
-              postLikeCounts[postId] =
-                (postLikeCounts[postId] || 0) + 1;
-            }
-
-            likedPostIds.add(postId);
-          }
-
-          renderFeed();
-        } catch (error) {
-          console.error("GARAGE like error:", error);
-          notify("Could not update like: " + error.message);
-        }
-
-        return;
-      }
-
-      if (commentButton) {
-        const postId = commentButton.dataset.focusComment;
-
-        const form = Array.from(
-          feed.querySelectorAll("[data-comment]")
-        ).find((item) => item.dataset.comment === postId);
-
-        form?.querySelector('input[name="comment"]')?.focus();
-      }
-    });
-
-    feed.addEventListener("submit", async (event) => {
-      const form = event.target.closest("form[data-comment]");
-      if (!form) return;
-
-      event.preventDefault();
-
-      if (form.dataset.busy === "true") return;
-
-      const user = await getSignedInUser();
-
-      if (!user) {
-        notify("Please sign in to comment.");
-        return;
-      }
-
-      const input = form.elements.namedItem("comment");
-      const content = input?.value.trim() || "";
-
-      if (!content) return;
-
-      if (content.length > 1000) {
-        notify("Comments must be 1,000 characters or fewer.");
-        return;
-      }
-
-      const postId = form.dataset.comment;
-      const button = form.querySelector('button[type="submit"]');
-
-      form.dataset.busy = "true";
-
-      if (button) button.disabled = true;
-
-      try {
-        const { error } = await client.from("post_comments").insert({
-          post_id: postId,
-          user_id: user.id,
-          content
-        });
-
-        if (error) throw error;
-
-        input.value = "";
-
-        await loadCommunityPosts();
-
-        notify("Comment posted.");
-      } catch (error) {
-        console.error("GARAGE comment error:", error);
-        notify("Could not post comment: " + error.message);
-      } finally {
-        form.dataset.busy = "false";
-
-        if (button) button.disabled = false;
-      }
-    });
-  }
-
-  function renderMembers() {
-    const container = $("members");
-    if (!container) return;
-
-    container.innerHTML = demoMembers.map((member) => {
-      const following = followed.has(member.name);
-
-      return `
-        <div class="member">
-          <div class="avatar" aria-hidden="true">
-            ${escapeHTML(member.avatar)}
-          </div>
-
-          <div class="member-name">
-            <strong>${escapeHTML(member.name)}</strong>
-            <small>${escapeHTML(member.car)}</small>
-          </div>
-
-          <button
-            class="action ${following ? "following" : ""}"
-            type="button"
-            data-follow="${escapeHTML(member.name)}"
-            aria-pressed="${following}">
-            ${following ? "Following" : "Follow"}
-          </button>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function setupMemberInteractions() {
-    $("members")?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-follow]");
-      if (!button) return;
-
-      const name = button.dataset.follow;
-
-      if (followed.has(name)) {
-        followed.delete(name);
-      } else {
-        followed.add(name);
-      }
-
-      renderMembers();
-
-      notify(
-        followed.has(name)
-          ? `Following ${name} locally.`
-          : `Unfollowed ${name} locally.`
-      );
-    });
-  }
-
-  function renderListings() {
-    const container = $("carListings");
-    if (!container) return;
+    const listings = getLocal(STORAGE_KEYS.listings, []);
 
     if (!listings.length) {
-      container.innerHTML =
-        '<p class="muted">No demo listings yet. Add a listing to try this feature.</p>';
+      list.innerHTML = "<p>No demo listings yet.</p>";
       return;
     }
 
-    container.innerHTML = listings.map((car) => `
-      <article class="listing-card">
-        <div class="feature-icon" aria-hidden="true">🚘</div>
-        <h3>${escapeHTML(car.name)}</h3>
-        <p class="price">$${Number(car.price).toLocaleString("en-US")}</p>
-        <p>${escapeHTML(car.details || "No additional details provided.")}</p>
+    list.innerHTML = listings.map((item) => `
+      <article class="market-listing">
+        <h3>${escapeHTML(item.name)}</h3>
+        <p><strong>${escapeHTML(item.price)}</strong></p>
+        <p>${escapeHTML(item.details)}</p>
+        <small>Demo listing · saved in this browser only</small>
+        ${item.ownerId === currentUserId()
+          ? `<button type="button" data-delete-listing="${escapeHTML(item.id)}">Delete</button>`
+          : ""}
       </article>
     `).join("");
   }
 
-  function setupListingForm() {
-    $("listingForm")?.addEventListener("submit", (event) => {
-      event.preventDefault();
+  function createListing(event) {
+    event.preventDefault();
+    if (!requireUser()) return;
 
-      const name = $("carName")?.value.trim() || "";
-      const price = Number($("carPrice")?.value);
-      const details = $("carDetails")?.value.trim() || "";
+    const name = textOf($("carName")?.value);
+    const price = textOf($("carPrice")?.value);
+    const details = textOf($("carDetails")?.value);
 
-      if (!name || !Number.isFinite(price) || price < 0) {
-        notify("Enter a valid car name and price.");
-        return;
-      }
+    if (!name || !price) {
+      toast("Enter a listing name and price.");
+      return;
+    }
 
-      listings.unshift({ name, price, details });
-
-      event.currentTarget.reset();
-
-      renderListings();
-
-      notify("Demo listing added. It is not saved to Supabase.");
+    const listings = getLocal(STORAGE_KEYS.listings, []);
+    listings.unshift({
+      id: crypto.randomUUID(),
+      ownerId: state.user.id,
+      name,
+      price,
+      details,
+      createdAt: new Date().toISOString()
     });
+
+    setLocal(STORAGE_KEYS.listings, listings);
+    event.currentTarget.reset();
+    loadListings();
+    toast("Demo listing saved in this browser only.");
   }
 
-  function showConversationMessage(message, isError = false) {
-    const conversation = $("conversation");
-    if (!conversation) return;
-
-    conversation.replaceChildren();
-
-    const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent = message;
-
-    if (isError) {
-      p.style.color = "#ff7777";
-    }
-
-    conversation.appendChild(p);
+  function deleteListing(id) {
+    const listings = getLocal(STORAGE_KEYS.listings, []);
+    setLocal(
+      STORAGE_KEYS.listings,
+      listings.filter((item) =>
+        item.id !== id || item.ownerId !== currentUserId()
+      )
+    );
+    loadListings();
   }
 
-  function memberLabel(profile) {
-    return profile.display_name ||
-      profile.username ||
-      `Member ${String(profile.id).slice(0, 6)}`;
+  // -------------------- Garage vehicle list --------------------
+  // This is a browser-local personal garage, not marketplace data.
+
+  function loadGarageCars() {
+    const list = $("carList");
+    if (!list) return;
+
+    const key = `garage_vehicles_${currentUserId() || "guest"}`;
+    const cars = getLocal(key, []);
+
+    list.innerHTML = cars.length
+      ? cars.map((car) => `
+          <article class="garage-car">
+            <h3>${escapeHTML(car.make)} ${escapeHTML(car.model)}</h3>
+            <p>${escapeHTML(car.year || "")}</p>
+            <p>${escapeHTML(car.description || "")}</p>
+            <p>${escapeHTML(car.mods || "")}</p>
+            <button type="button" data-delete-car="${escapeHTML(car.id)}">
+              Remove
+            </button>
+          </article>
+        `).join("")
+      : "<p>Your garage is empty.</p>";
   }
 
-  async function loadMessageMembers() {
-    const select = $("messageTo");
-    if (!select || !client) return;
+  function createGarageCar(event) {
+    event.preventDefault();
+    if (!requireUser()) return;
 
-    const thisLoad = ++memberLoadNumber;
-    const previousValue = select.value;
+    const make = textOf($("carMake")?.value);
+    const model = textOf($("carModel")?.value);
 
-    select.disabled = true;
-    select.replaceChildren();
-
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Loading members...";
-
-    select.appendChild(placeholder);
-
-    try {
-      const user = await getSignedInUser();
-
-      if (thisLoad !== memberLoadNumber) return;
-
-      if (!user) {
-        placeholder.textContent = "Sign in to message members";
-
-        showConversationMessage(
-          "Please sign in to use private messages."
-        );
-
-        return;
-      }
-
-      const { data, error } = await client
-        .from("profiles")
-        .select("id, username, display_name")
-        .neq("id", user.id)
-        .order("username", { ascending: true });
-
-      if (error) throw error;
-      if (thisLoad !== memberLoadNumber) return;
-
-      select.replaceChildren();
-
-      const first = document.createElement("option");
-      first.value = "";
-      first.textContent = data?.length
-        ? "Choose a member..."
-        : "No other members found";
-
-      select.appendChild(first);
-
-      for (const profile of data || []) {
-        const option = document.createElement("option");
-
-        option.value = profile.id;
-        option.textContent = memberLabel(profile);
-
-        select.appendChild(option);
-      }
-
-      select.disabled = !(data && data.length);
-
-      const requested = new URL(window.location.href)
-        .searchParams.get("to");
-
-      const desired = requested || previousValue;
-
-      const validRecipient = Array.from(select.options)
-        .some((option) => option.value === desired);
-
-      if (validRecipient && desired) {
-        select.value = desired;
-        await loadConversation();
-      } else {
-        activeConversationId = null;
-
-        showConversationMessage(
-          "Choose a member to open a conversation."
-        );
-      }
-    } catch (error) {
-      if (thisLoad !== memberLoadNumber) return;
-
-      console.error("GARAGE member list error:", error);
-
-      select.replaceChildren();
-
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Could not load members";
-
-      select.appendChild(option);
-
-      showConversationMessage(
-        "Could not load members: " + error.message,
-        true
-      );
-    }
-  }
-  async function loadConversation() {
-    const select = $("messageTo");
-
-    if (!select || !client) return;
-
-    const recipientId = select.value;
-
-    if (!recipientId) {
-      activeConversationId = null;
-
-      showConversationMessage(
-        "Choose a member to open a conversation."
-      );
-
+    if (!make || !model) {
+      toast("Enter the vehicle make and model.");
       return;
     }
 
-    const user = await getSignedInUser();
+    const key = `garage_vehicles_${currentUserId()}`;
+    const cars = getLocal(key, []);
 
-    if (!user) {
-      showConversationMessage(
-        "Please sign in to use private messages."
-      );
-      return;
+    cars.unshift({
+      id: crypto.randomUUID(),
+      make,
+      model,
+      year: textOf($("carYear")?.value),
+      description: textOf($("carDescription")?.value),
+      mods: textOf($("carMods")?.value)
+    });
+
+    setLocal(key, cars);
+    event.currentTarget.reset();
+    loadGarageCars();
+    setText("carMessage", "Vehicle saved in this browser.");
+  }
+
+  function deleteGarageCar(id) {
+    if (!requireUser()) return;
+
+    const key = `garage_vehicles_${currentUserId()}`;
+    const cars = getLocal(key, []);
+    setLocal(key, cars.filter((car) => car.id !== id));
+    loadGarageCars();
+  }
+
+  // -------------------- Conversation-based messaging --------------------
+
+  async function findOrCreateConversation(recipientId) {
+    if (!requireUser()) return null;
+    if (!recipientId || recipientId === state.user.id) {
+      toast("Choose another member.");
+      return null;
     }
 
-    const thisLoad = ++conversationLoadNumber;
+    // Find conversations where this user is a participant.
+    const { data: mine, error: mineError } = await client
+      .from("conversations")
+      .select("id, participant_one, participant_two")
+      .or(
+        `participant_one.eq.${state.user.id},participant_two.eq.${state.user.id}`
+      );
 
-    activeConversationId = null;
+    if (mineError) throw mineError;
 
-    showConversationMessage("Loading conversation...");
+    const existing = (mine || []).find((conversation) =>
+      (conversation.participant_one === state.user.id &&
+        conversation.participant_two === recipientId) ||
+      (conversation.participant_one === recipientId &&
+        conversation.participant_two === state.user.id)
+    );
 
-    try {
-      const { data: existing, error: existingError } = await client
+    if (existing) return existing.id;
+
+    // Canonical ordering avoids duplicate pairs.
+    const [participantOne, participantTwo] =
+      [state.user.id, recipientId].sort();
+
+    const { data, error } = await client
+      .from("conversations")
+      .insert({ participant_one: participantOne, participant_two: participantTwo })
+      .select("id")
+      .single();
+
+    // A unique constraint protects against simultaneous duplicate creation.
+    if (error?.code === "23505") {
+      const { data: retryData, error: retryError } = await client
         .from("conversations")
-        .select("id, user_one, user_two")
-        .or(
-          `and(user_one.eq.${user.id},user_two.eq.${recipientId}),` +
-          `and(user_one.eq.${recipientId},user_two.eq.${user.id})`
-        )
-        .limit(1);
+        .select("id")
+        .eq("participant_one", participantOne)
+        .eq("participant_two", participantTwo)
+        .single();
 
-      if (existingError) throw existingError;
-      if (thisLoad !== conversationLoadNumber) return;
+      if (retryError) throw retryError;
+      return retryData.id;
+    }
 
-      let conversation = existing?.[0] || null;
+    if (error) throw error;
+    return data.id;
+  }
 
-      if (!conversation) {
-        const { data: created, error: createError } = await client
-          .from("conversations")
-          .insert({
-            user_one: user.id,
-            user_two: recipientId
-          })
-          .select("id, user_one, user_two")
-          .single();
+  async function openConversation(recipientId) {
+    if (!requireUser()) return;
 
-        if (createError) {
-          // Another request may have created the conversation first.
-          const { data: retry, error: retryError } = await client
-            .from("conversations")
-            .select("id, user_one, user_two")
-            .or(
-              `and(user_one.eq.${user.id},user_two.eq.${recipientId}),` +
-              `and(user_one.eq.${recipientId},user_two.eq.${user.id})`
-            )
-            .limit(1);
+    const recipient = state.profiles.find((p) => p.id === recipientId);
+    if (!recipient) {
+      toast("Member not found. Refresh the member list and try again.");
+      return;
+    }
 
-          if (retryError) throw createError;
+    try {
+      const conversationId = await findOrCreateConversation(recipientId);
+      if (!conversationId) return;
 
-          conversation = retry?.[0] || null;
+      state.activeConversationId = conversationId;
+      state.activeRecipientId = recipientId;
 
-          if (!conversation) throw createError;
-        } else {
-          conversation = created;
-        }
-      }
+      const select = $("messageTo");
+      if (select) select.value = recipientId;
 
-      if (thisLoad !== conversationLoadNumber) return;
+      setText("carMessage", "");
+      await loadMessages();
 
-      activeConversationId = conversation.id;
-
-      await loadConversationMessages(
-        conversation.id,
-        thisLoad
-      );
+      const page = $("messagesPage");
+      if (page) page.hidden = false;
     } catch (error) {
-      if (thisLoad !== conversationLoadNumber) return;
-
-      console.error("GARAGE conversation error:", error);
-
-      showConversationMessage(
-        "Could not open conversation: " + error.message,
-        true
-      );
+      console.error("GARAGE open conversation:", error);
+      toast("Could not open this conversation.");
     }
   }
 
-  async function loadConversationMessages(conversationId, loadNumber) {
+  async function loadMessages() {
     const conversation = $("conversation");
-    if (!conversation || !client) return;
+    if (!conversation || !state.activeConversationId) return;
 
-    try {
-      const { data: messages, error } = await client
+    const loadToken = ++state.messageLoadToken;
+    conversation.innerHTML = "<p>Loading messages…</p>";
+
+    const { data, error } = await client
+      .from("messages")
+      .select(`
+        id, conversation_id, sender_id, body, created_at, read_at,
+        profiles:sender_id (username, display_name)
+      `)
+      .eq("conversation_id", state.activeConversationId)
+      .order("created_at", { ascending: true })
+      .limit(200);
+
+    if (loadToken !== state.messageLoadToken) return;
+
+    if (error) {
+      console.error("GARAGE load messages:", error);
+      conversation.innerHTML = "<p>Could not load messages.</p>";
+      return;
+    }
+
+    const messages = data || [];
+    conversation.innerHTML = messages.length
+      ? messages.map((message) => {
+          const own = message.sender_id === currentUserId();
+          return `
+            <article class="chat-message ${own ? "own-message" : ""}">
+              <strong>${own ? "You" : escapeHTML(
+                profileName(message.profiles || {})
+              )}</strong>
+              <p>${escapeHTML(message.body).replace(/\n/g, "<br>")}</p>
+              <small>${escapeHTML(formatDate(message.created_at))}
+                ${own && message.read_at ? " · Read" : ""}
+              </small>
+            </article>
+          `;
+        }).join("")
+      : "<p>No messages yet. Say hello.</p>";
+
+    conversation.scrollTop = conversation.scrollHeight;
+
+    // Mark unread messages sent by the other participant as read.
+    const unreadIds = messages
+      .filter((message) =>
+        message.sender_id !== currentUserId() && !message.read_at
+      )
+      .map((message) => message.id);
+
+    if (unreadIds.length) {
+      const { error: readError } = await client
         .from("messages")
-        .select("id, sender_id, recipient_id, content, created_at, read_at")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .update({ read_at: new Date().toISOString() })
+        .in("id", unreadIds)
+        .eq("conversation_id", state.activeConversationId);
 
-      if (error) throw error;
-
-      if (loadNumber !== conversationLoadNumber) return;
-      if (conversationId !== activeConversationId) return;
-
-      const user = await getSignedInUser();
-
-      if (!user) {
-        showConversationMessage(
-          "Please sign in to view messages."
-        );
-        return;
-      }
-
-      conversation.replaceChildren();
-
-      if (!messages?.length) {
-        showConversationMessage(
-          "No messages yet. Say hello to start the conversation."
-        );
-        return;
-      }
-
-      for (const message of messages) {
-        const wrapper = document.createElement("div");
-
-        wrapper.className =
-          "message " +
-          (message.sender_id === user.id ? "message-own" : "message-other");
-
-        const body = document.createElement("p");
-        body.textContent = message.content;
-
-        const metadata = document.createElement("small");
-        metadata.className = "muted";
-
-        const date = formatDate(message.created_at);
-
-        metadata.textContent =
-          message.sender_id === user.id
-            ? `${date}${message.read_at ? " · Read" : ""}`
-            : date;
-
-        wrapper.append(body, metadata);
-        conversation.appendChild(wrapper);
-      }
-
-      conversation.scrollTop = conversation.scrollHeight;
-
-      const unreadIds = messages
-        .filter((message) =>
-          message.recipient_id === user.id &&
-          message.sender_id !== user.id &&
-          !message.read_at
-        )
-        .map((message) => message.id);
-
-      if (unreadIds.length) {
-        const now = new Date().toISOString();
-
-        const { error: readError } = await client
-          .from("messages")
-          .update({ read_at: now })
-          .in("id", unreadIds)
-          .eq("recipient_id", user.id);
-
-        if (readError) {
-          console.warn(
-            "GARAGE message read status error:",
-            readError.message
-          );
-        }
-      }
-    } catch (error) {
-      console.error("GARAGE message loading error:", error);
-
-      showConversationMessage(
-        "Could not load messages: " + error.message,
-        true
-      );
+      if (readError) console.warn("GARAGE mark read:", readError.message);
     }
   }
 
   async function sendMessage(event) {
     event.preventDefault();
+    if (!requireUser()) return;
 
-    if (isSendingMessage) return;
-
-    const user = await getSignedInUser();
-
-    if (!user) {
-      notify("Please sign in to send messages.");
-      return;
-    }
-
-    const recipientId = $("messageTo")?.value;
-    const input = $("messageText");
-    const content = input?.value.trim() || "";
+    const form = event.currentTarget;
+    const recipientId = textOf($("messageTo")?.value);
+    const body = textOf($("messageText")?.value);
 
     if (!recipientId) {
-      notify("Choose a member first.");
+      toast("Choose a member to message.");
       return;
     }
 
-    if (!content) return;
-
-    if (content.length > 4000) {
-      notify("Messages must be 4,000 characters or fewer.");
+    if (!body) {
+      toast("Write a message first.");
       return;
     }
 
-    const form = $("messageForm");
-    const button = form?.querySelector('button[type="submit"]');
-
-    isSendingMessage = true;
-    setButtonBusy(button, true, "Sending...", "Send");
+    setBusy(form, true, "Sending…");
 
     try {
-      if (!activeConversationId) {
-        await loadConversation();
+      let conversationId = state.activeConversationId;
+
+      if (!conversationId || state.activeRecipientId !== recipientId) {
+        conversationId = await findOrCreateConversation(recipientId);
+        state.activeConversationId = conversationId;
+        state.activeRecipientId = recipientId;
       }
 
-      if (!activeConversationId) {
-        throw new Error("Could not open the conversation.");
-      }
-
-      const conversationId = activeConversationId;
+      if (!conversationId) return;
 
       const { error } = await client.from("messages").insert({
         conversation_id: conversationId,
-        sender_id: user.id,
-        recipient_id: recipientId,
-        content
+        sender_id: state.user.id,
+        body
       });
 
       if (error) throw error;
 
-      input.value = "";
-
-      await loadConversationMessages(
-        conversationId,
-        conversationLoadNumber
-      );
+      $("messageText").value = "";
+      await loadMessages();
     } catch (error) {
-      console.error("GARAGE send message error:", error);
-
-      notify("Could not send message: " + error.message);
+      console.error("GARAGE send message:", error);
+      toast(error.message || "Could not send the message.");
     } finally {
-      isSendingMessage = false;
-
-      setButtonBusy(button, false, "Sending...", "Send");
+      setBusy(form, false);
     }
   }
 
-  function setupMessaging() {
-    $("messageTo")?.addEventListener("change", () => {
-      loadConversation();
-    });
+  function setupRealtime() {
+    if (state.feedChannel) {
+      client.removeChannel(state.feedChannel);
+      state.feedChannel = null;
+    }
 
-    $("messageForm")?.addEventListener("submit", sendMessage);
+    state.feedChannel = client
+      .channel("garage-public-feed")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "posts"
+      }, loadFeed)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "likes"
+      }, loadFeed)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "comments"
+      }, loadFeed)
+      .subscribe();
 
-    $("refreshMessages")?.addEventListener("click", () => {
-      if (activeConversationId) {
-        loadConversationMessages(
-          activeConversationId,
-          conversationLoadNumber
-        );
-      } else {
-        loadMessageMembers();
-      }
-    });
+    if (state.messageChannel) {
+      client.removeChannel(state.messageChannel);
+      state.messageChannel = null;
+    }
+
+    if (state.user) {
+      state.messageChannel = client
+        .channel(`garage-messages-${state.user.id}`)
+        .on("postgres_changes", {
+          event: "*",
+          schema: "public",
+          table: "messages"
+        }, (payload) => {
+          const message = payload.new || payload.old;
+          if (
+            message?.conversation_id &&
+            message.conversation_id === state.activeConversationId
+          ) {
+            loadMessages();
+          }
+        })
+        .subscribe();
+    }
   }
 
-  function setupSearch() {
-    const search = $("search");
-
-    search?.addEventListener("input", renderFeed);
-  }
+  // -------------------- Existing UI wiring --------------------
 
   function setupNavigation() {
-    document.querySelectorAll("[data-scroll-to]").forEach((button) => {
+    document.querySelectorAll("[data-page]").forEach((button) => {
       button.addEventListener("click", () => {
-        const target = $(button.dataset.scrollTo);
-
-        target?.scrollIntoView({
-          behavior: "smooth",
-          block: "start"
+        const pageId = button.dataset.page;
+        document.querySelectorAll("[id$='Page']").forEach((page) => {
+          page.hidden = page.id !== pageId;
         });
       });
     });
+
+    const profileButton = $("profileBtn");
+    if (profileButton) {
+      profileButton.addEventListener("click", () => {
+        const page = $("garagePage");
+        if (page) page.hidden = false;
+      });
+    }
+
+    const shareButton = $("shareBtn");
+    if (shareButton) {
+      shareButton.addEventListener("click", async () => {
+        const shareData = {
+          title: "GARAGE",
+          text: "Join me on GARAGE, the car community.",
+          url: window.location.href
+        };
+
+        try {
+          if (navigator.share) {
+            await navigator.share(shareData);
+          } else if (navigator.clipboard) {
+            await navigator.clipboard.writeText(shareData.url);
+            toast("Website link copied.");
+          } else {
+            toast("Copy the website URL from your browser.");
+          }
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.warn("GARAGE share:", error);
+          }
+        }
+      });
+    }
+
+    const search = $("search");
+    if (search) {
+      search.addEventListener("input", () => {
+        const query = textOf(search.value).toLowerCase();
+
+        document.querySelectorAll(
+          ".community-post, .market-listing, .member-card, .garage-car"
+        ).forEach((item) => {
+          item.hidden = !item.textContent.toLowerCase().includes(query);
+        });
+      });
+    }
   }
 
-  function setupAuthLinks() {
-    $("logout-btn")?.addEventListener("click", async (event) => {
-      event.preventDefault();
+  function setupEvents() {
+    $("postForm")?.addEventListener("submit", createPost);
+    $("listingForm")?.addEventListener("submit", createListing);
+    $("carForm")?.addEventListener("submit", createGarageCar);
+    $("messageForm")?.addEventListener("submit", sendMessage);
 
-      if (!client?.auth) return;
+    $("messageTo")?.addEventListener("change", async (event) => {
+      const recipientId = event.currentTarget.value;
+      if (recipientId) await openConversation(recipientId);
+    });
 
-      const button = event.currentTarget;
-      button.disabled = true;
-
-      try {
-        const { error } = await client.auth.signOut();
-
-        if (error) throw error;
-
-        notify("You have signed out.");
-        window.location.href = "index.html";
-      } catch (error) {
-        console.error("GARAGE sign-out error:", error);
-        notify("Could not sign out: " + error.message);
-      } finally {
-        button.disabled = false;
+    $("logout-btn")?.addEventListener("click", async () => {
+      const { error } = await client.auth.signOut();
+      if (error) {
+        console.error("GARAGE sign out:", error);
+        toast("Could not sign out.");
       }
     });
-  }
 
-  function setupAuthState() {
-    if (!client?.auth || authSubscription) return;
+    $("postMedia")?.addEventListener("change", () => {
+      const input = $("postMedia");
+      const file = input?.files?.[0];
+      const preview = $("mediaPreview");
 
-    const {
-      data: { subscription }
-    } = client.auth.onAuthStateChange((event, session) => {
-      currentUser = session?.user || null;
+      setText("fileName", file?.name || "No file selected");
+      if (!preview) return;
 
-      updateAuthUI();
+      preview.innerHTML = "";
+      if (!file) return;
 
-      if (event === "SIGNED_OUT") {
-        currentProfile = null;
-        activeConversationId = null;
-        communityPosts = [];
-        postLikeCounts = {};
-        postComments = {};
-        likedPostIds = new Set();
+      const url = URL.createObjectURL(file);
+      const media = document.createElement(
+        file.type.startsWith("video/") ? "video" : "img"
+      );
 
-        renderFeed();
+      media.src = url;
+      media.className = "media-preview";
+      if (media.tagName === "VIDEO") media.controls = true;
 
-        if ($("messageTo")) {
-          $("messageTo").replaceChildren();
+      media.addEventListener("loadeddata", () => {
+        URL.revokeObjectURL(url);
+      }, { once: true });
 
-          const option = document.createElement("option");
-          option.value = "";
-          option.textContent = "Sign in to message members";
+      preview.appendChild(media);
+    });
 
-          $("messageTo").appendChild(option);
-          $("messageTo").disabled = true;
-        }
-
-        showConversationMessage(
-          "Please sign in to use private messages."
-        );
-
+    document.addEventListener("click", async (event) => {
+      const likeButton = event.target.closest("[data-like-post]");
+      if (likeButton) {
+        await toggleLike(likeButton.dataset.likePost);
         return;
       }
 
-      if (session?.user) {
-        void loadCurrentProfile(session.user);
+      const messageButton = event.target.closest("[data-message-member]");
+      if (messageButton) {
+        await openConversation(messageButton.dataset.messageMember);
+        return;
+      }
+
+      const followButton = event.target.closest("[data-follow-member]");
+      if (followButton) {
+        toggleFollow(followButton.dataset.followMember);
+        return;
+      }
+
+      const deleteListingButton = event.target.closest("[data-delete-listing]");
+      if (deleteListingButton) {
+        deleteListing(deleteListingButton.dataset.deleteListing);
+        return;
+      }
+
+      const deleteCarButton = event.target.closest("[data-delete-car]");
+      if (deleteCarButton) {
+        deleteGarageCar(deleteCarButton.dataset.deleteCar);
       }
     });
 
-    authSubscription = subscription;
-  }
+    document.addEventListener("submit", async (event) => {
+      const form = event.target.closest("[data-comment-form]");
+      if (!form) return;
 
-  async function loadCurrentProfile(user) {
-    if (!client || !user) return;
+      event.preventDefault();
+      const input = form.querySelector('[name="comment"]');
+      const content = textOf(input?.value);
 
-    try {
-      const { data, error } = await client
-        .from("profiles")
-        .select("id, username, display_name, avatar_url, favorite_car")
-        .eq("id", user.id)
-        .maybeSingle();
+      if (!content) return;
 
-      if (error) throw error;
-
-      if (currentUser?.id !== user.id) return;
-
-      currentProfile = data || null;
-
-      updateAuthUI();
-
-      await loadCommunityPosts();
-
-      if ($("messageTo")) {
-        await loadMessageMembers();
-      }
-    } catch (error) {
-      console.error("GARAGE profile loading error:", error);
-    }
-  }
-
-  function setupAccountStatus() {
-    const status = $("account-status");
-    if (!status) return;
-
-    status.addEventListener("click", () => {
-      if (!currentUser) {
-        window.location.href = "auth.html";
-      }
+      await addComment(form.dataset.commentForm, content);
     });
   }
 
-  async function initialize() {
-    renderMembers();
-    renderListings();
+  async function refreshForUser() {
+    await loadProfile();
+    await loadProfiles();
+    await loadFeed();
+    loadListings();
+    loadGarageCars();
+    setupRealtime();
+  }
 
-    setupMediaPicker();
-    setupFeedInteractions();
-    setupMemberInteractions();
-    setupListingForm();
-    setupMessaging();
-    setupSearch();
+  async function init() {
+    setupEvents();
     setupNavigation();
-    setupAuthLinks();
-    setupAccountStatus();
 
-    if ($("postForm")) {
-      $("postForm").addEventListener("submit", publishPost);
+    const { data, error } = await client.auth.getSession();
+
+    if (error) {
+      console.error("GARAGE session:", error);
+      toast("Could not check your sign-in session.");
     }
 
-    setupAuthState();
+    state.user = data?.session?.user || null;
+    await refreshForUser();
 
-    if (!client?.auth) {
-      updateAuthUI();
+    client.auth.onAuthStateChange((_event, session) => {
+      // Defer Supabase queries outside the auth callback.
+      state.user = session?.user || null;
+      state.profile = null;
+      state.activeConversationId = null;
+      state.activeRecipientId = null;
 
-      showStatus(
-        "Supabase is not initialized. Check supabase-client.js."
-      );
-
-      return;
-    }
-
-    try {
-      const { data, error } = await client.auth.getSession();
-
-      if (error) throw error;
-
-      currentUser = data?.session?.user || null;
-
-      updateAuthUI();
-
-      if (currentUser) {
-        await loadCurrentProfile(currentUser);
-      } else {
-        await loadCommunityPosts();
-
-        if ($("messageTo")) {
-          await loadMessageMembers();
-        }
-      }
-    } catch (error) {
-      console.error("GARAGE initialization error:", error);
-
-      showStatus(
-        "Could not initialize GARAGE: " + error.message
-      );
-    }
+      setTimeout(() => {
+        refreshForUser();
+      }, 0);
+    });
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialize, { once: true });
-  } else {
-    initialize();
-  }
+  init().catch((error) => {
+    console.error("GARAGE initialization failed:", error);
+    toast("GARAGE could not finish loading. Check the console.");
+  });
 })();
