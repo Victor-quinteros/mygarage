@@ -1,30 +1,114 @@
 
+/* =========================================================
+   GARAGE — MEMBERS PAGE
+   ---------------------------------------------------------
+   FEATURES
+   1. Load public member profiles from Supabase
+   2. Display newest members
+   3. Rank top contributors by public post count
+   4. Search all members
+   5. Display individual member profiles
+
+   REQUIREMENTS
+   - supabase-client.js must load before this file.
+   - Public profile and community-post read policies must
+     permit the relevant queries.
+========================================================= */
+
 (() => {
   "use strict";
 
-  const SUPABASE_URL =
-    "https://ovooslmyfavrtlxazykq.supabase.co";
+  /* =======================================================
+     1. SUPABASE CLIENT
+  ======================================================= */
 
-  const SUPABASE_KEY =
-    "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
+  const client = window.garageSupabase;
 
-  const client = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
+  if (!client) {
+    console.error(
+      "GARAGE Members: Supabase client is not initialized."
+    );
+    return;
+  }
+
+
+  /* =======================================================
+     2. PAGE ELEMENTS
+  ======================================================= */
 
   const directoryView = document.getElementById("directory-view");
   const memberView = document.getElementById("member-view");
+
   const grid = document.getElementById("members-grid");
   const search = document.getElementById("member-search");
   const message = document.getElementById("members-message");
+
+  const newestGrid = document.getElementById("newest-members-grid");
+  const newestMessage = document.getElementById("newest-members-message");
+
+  const contributorsGrid = document.getElementById(
+    "top-contributors-grid"
+  );
+  const contributorsMessage = document.getElementById(
+    "top-contributors-message"
+  );
+
   const detail = document.getElementById("member-detail");
   const detailMessage = document.getElementById("member-message");
 
-  let profiles = [];
+  const REQUIRED_ELEMENTS = [
+    directoryView,
+    memberView,
+    grid,
+    search,
+    message,
+    newestGrid,
+    newestMessage,
+    contributorsGrid,
+    contributorsMessage,
+    detail,
+    detailMessage
+  ];
 
+  if (REQUIRED_ELEMENTS.some((element) => !element)) {
+    console.error(
+      "GARAGE Members: One or more required HTML elements are missing."
+    );
+    return;
+  }
+
+
+  /* =======================================================
+     3. CONFIGURATION AND PAGE STATE
+  ======================================================= */
+
+  // Maximum number of cards in the two featured sections.
+  const NEWEST_MEMBERS_LIMIT = 6;
+  const TOP_CONTRIBUTORS_LIMIT = 6;
+
+  // Shared public profile fields.
+  const PROFILE_FIELDS = [
+    "id",
+    "username",
+    "display_name",
+    "bio",
+    "favorite_car",
+    "avatar_url",
+    "created_at"
+  ].join(", ");
+
+  let profiles = [];
+  let publicPostCounts = new Map();
+
+
+  /* =======================================================
+     4. GENERAL HELPER FUNCTIONS
+  ======================================================= */
+
+  // Add text safely without interpreting it as HTML.
   function addTextElement(parent, tag, text, className) {
     const element = document.createElement(tag);
+
     element.textContent = text ?? "";
 
     if (className) {
@@ -32,13 +116,77 @@
     }
 
     parent.appendChild(element);
+
     return element;
   }
 
+
+  // Display a message in a section.
+  function setMessage(element, text) {
+    element.textContent = text;
+  }
+
+
+  // Get a member's display name.
+  function getMemberName(profile) {
+    return (
+      profile.display_name ||
+      profile.username ||
+      "GARAGE Member"
+    );
+  }
+
+
+  // Create a URL for an individual member profile.
+  function getMemberProfileUrl(profile) {
+    return (
+      "members.html?username=" +
+      encodeURIComponent(profile.username)
+    );
+  }
+
+
+  // Get the number of public posts made by a member.
+  function getPublicPostCount(profile) {
+    if (!profile.id) {
+      return 0;
+    }
+
+    return publicPostCounts.get(profile.id) || 0;
+  }
+
+
+  // Sort profiles by creation date, newest first.
+  function sortProfilesNewestFirst(list) {
+    return [...list].sort((a, b) => {
+      const dateA = Date.parse(a.created_at || "");
+      const dateB = Date.parse(b.created_at || "");
+
+      // Profiles without a valid date go after dated profiles.
+      const validA = Number.isFinite(dateA);
+      const validB = Number.isFinite(dateB);
+
+      if (validA && validB) {
+        return dateB - dateA;
+      }
+
+      if (validA) return -1;
+      if (validB) return 1;
+
+      return getMemberName(a).localeCompare(getMemberName(b));
+    });
+  }
+
+
+  /* =======================================================
+     5. MEMBER AVATARS
+  ======================================================= */
+
   function addAvatar(parent, profile, isDetail = false) {
-    const avatar = document.createElement("img");
-    const name = profile.display_name || profile.username || "Member";
+    const name = getMemberName(profile);
     const initial = name.trim().charAt(0).toUpperCase() || "?";
+
+    const avatar = document.createElement("img");
 
     avatar.className = isDetail
       ? "member-detail-avatar"
@@ -47,32 +195,220 @@
     avatar.alt = name + "'s profile picture";
     avatar.loading = "lazy";
 
-    // Show a simple fallback if the member has no picture.
+    // Replace missing or broken images with an initial.
     function showFallback() {
+      if (!avatar.isConnected) {
+        return;
+      }
+
       const fallback = document.createElement("div");
-      fallback.className = avatar.className + " member-avatar-fallback";
+
+      fallback.className =
+        avatar.className + " member-avatar-fallback";
+
       fallback.setAttribute("role", "img");
-      fallback.setAttribute("aria-label", "No profile picture");
+      fallback.setAttribute(
+        "aria-label",
+        "No profile picture for " + name
+      );
+
       fallback.textContent = initial;
       avatar.replaceWith(fallback);
     }
 
     if (!profile.avatar_url) {
-      showFallback();
+      // The image is not attached yet, so add the fallback directly.
+      const fallback = document.createElement("div");
+
+      fallback.className =
+        avatar.className + " member-avatar-fallback";
+
+      fallback.setAttribute("role", "img");
+      fallback.setAttribute(
+        "aria-label",
+        "No profile picture for " + name
+      );
+
+      fallback.textContent = initial;
+      parent.appendChild(fallback);
+
       return;
     }
 
+    avatar.addEventListener(
+      "error",
+      showFallback,
+      { once: true }
+    );
+
     avatar.src = profile.avatar_url;
-
-    avatar.addEventListener("error", () => {
-      // Prevent a broken image from being shown.
-      if (avatar.isConnected) {
-        showFallback();
-      }
-    }, { once: true });
-
     parent.appendChild(avatar);
   }
+
+
+  /* =======================================================
+     6. MEMBER CARD CREATION
+     Shared by newest members, contributors, and directory.
+  ======================================================= */
+
+  function createMemberCard(profile, options = {}) {
+    const {
+      showBio = true,
+      showFavoriteCar = true,
+      showPostCount = false
+    } = options;
+
+    const card = document.createElement("a");
+
+    card.className = "member-card";
+    card.href = getMemberProfileUrl(profile);
+
+    // Profile picture.
+    addAvatar(card, profile);
+
+    // Display name.
+    addTextElement(
+      card,
+      "h2",
+      getMemberName(profile)
+    );
+
+    // Username.
+    addTextElement(
+      card,
+      "p",
+      "@" + profile.username,
+      "member-username"
+    );
+
+    // Favorite car.
+    if (showFavoriteCar && profile.favorite_car) {
+      addTextElement(
+        card,
+        "p",
+        "Favorite car: " + profile.favorite_car
+      );
+    }
+
+    // Short biography.
+    if (showBio && profile.bio) {
+      const shortBio = profile.bio.length > 120
+        ? profile.bio.slice(0, 120) + "..."
+        : profile.bio;
+
+      addTextElement(card, "p", shortBio);
+    }
+
+    // Public community post count.
+    if (showPostCount) {
+      const count = getPublicPostCount(profile);
+      const label = count === 1 ? "public post" : "public posts";
+
+      addTextElement(
+        card,
+        "p",
+        count + " " + label,
+        "member-post-count"
+      );
+    }
+
+    return card;
+  }
+
+
+  /* =======================================================
+     7. NEWEST MEMBERS SECTION
+  ======================================================= */
+
+  function renderNewestMembers() {
+    newestGrid.replaceChildren();
+
+    const newestMembers = sortProfilesNewestFirst(profiles)
+      .slice(0, NEWEST_MEMBERS_LIMIT);
+
+    if (newestMembers.length === 0) {
+      setMessage(
+        newestMessage,
+        "No public member profiles yet."
+      );
+
+      return;
+    }
+
+    setMessage(
+      newestMessage,
+      "The latest members to join GARAGE."
+    );
+
+    newestMembers.forEach((profile) => {
+      newestGrid.appendChild(
+        createMemberCard(profile, {
+          showBio: false,
+          showFavoriteCar: true
+        })
+      );
+    });
+  }
+
+
+  /* =======================================================
+     8. TOP CONTRIBUTORS SECTION
+     Rank profiles by the number of public community posts.
+  ======================================================= */
+
+  function renderTopContributors() {
+    contributorsGrid.replaceChildren();
+
+    const contributors = [...profiles]
+      .filter((profile) => getPublicPostCount(profile) > 0)
+      .sort((a, b) => {
+        const countDifference =
+          getPublicPostCount(b) - getPublicPostCount(a);
+
+        if (countDifference !== 0) {
+          return countDifference;
+        }
+
+        return getMemberName(a).localeCompare(getMemberName(b));
+      })
+      .slice(0, TOP_CONTRIBUTORS_LIMIT);
+
+    if (contributors.length === 0) {
+      setMessage(
+        contributorsMessage,
+        "No public community posts yet. Share a build to become a top contributor!"
+      );
+
+      return;
+    }
+
+    setMessage(
+      contributorsMessage,
+      "Ranked by public community posts."
+    );
+
+    contributors.forEach((profile, index) => {
+      const card = createMemberCard(profile, {
+        showBio: false,
+        showFavoriteCar: true,
+        showPostCount: true
+      });
+
+      // Add a rank label.
+      const rank = document.createElement("p");
+      rank.className = "member-rank";
+      rank.textContent = "#" + (index + 1) + " Contributor";
+
+      card.insertBefore(rank, card.children[1]);
+
+      contributorsGrid.appendChild(card);
+    });
+  }
+
+
+  /* =======================================================
+     9. ALL MEMBERS DIRECTORY AND SEARCH
+  ======================================================= */
 
   function renderDirectory() {
     const term = search.value.trim().toLowerCase();
@@ -83,7 +419,10 @@
         profile.display_name,
         profile.favorite_car,
         profile.bio
-      ].join(" ").toLowerCase();
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
       return searchable.includes(term);
     });
@@ -91,107 +430,178 @@
     grid.replaceChildren();
 
     if (matches.length === 0) {
-      message.textContent = profiles.length
-        ? "No members match your search."
-        : "No public profiles yet. Be the first to create one!";
+      setMessage(
+        message,
+        profiles.length
+          ? "No members match your search."
+          : "No public profiles yet. Be the first to create one!"
+      );
+
       return;
     }
 
-    message.textContent = matches.length + " member(s) found.";
+    setMessage(
+      message,
+      matches.length + (
+        matches.length === 1
+          ? " member found."
+          : " members found."
+      )
+    );
 
     matches.forEach((profile) => {
-      const card = document.createElement("a");
-      card.className = "member-card";
-      card.href =
-        "members.html?username=" +
-        encodeURIComponent(profile.username);
-
-      addAvatar(card, profile);
-
-      addTextElement(
-        card,
-        "h2",
-        profile.display_name || profile.username
+      grid.appendChild(
+        createMemberCard(profile, {
+          showBio: true,
+          showFavoriteCar: true
+        })
       );
-
-      addTextElement(
-        card,
-        "p",
-        "@" + profile.username,
-        "member-username"
-      );
-
-      if (profile.favorite_car) {
-        addTextElement(
-          card,
-          "p",
-          "Favorite car: " + profile.favorite_car
-        );
-      }
-
-      if (profile.bio) {
-        const shortBio = profile.bio.length > 120
-          ? profile.bio.slice(0, 120) + "..."
-          : profile.bio;
-
-        addTextElement(card, "p", shortBio);
-      }
-
-      grid.appendChild(card);
     });
   }
 
-  async function loadDirectory() {
-    message.textContent = "Loading members...";
+
+  /* =======================================================
+     10. LOAD PROFILES FROM SUPABASE
+  ======================================================= */
+
+  async function loadProfiles() {
+    setMessage(newestMessage, "Loading newest members...");
+    setMessage(contributorsMessage, "Loading top contributors...");
+    setMessage(message, "Loading members...");
 
     const { data, error } = await client
       .from("profiles")
-      .select("username, display_name, bio, favorite_car, avatar_url")
-      .not("username", "is", null)
-      .order("username");
+      .select(PROFILE_FIELDS)
+      .not("username", "is", null);
 
     if (error) {
-      console.error("Could not load members:", error);
-      message.textContent =
-        "Could not load members. Check your Supabase table and public read policy.";
+      console.error(
+        "GARAGE Members: Could not load profiles:",
+        error
+      );
+
+      setMessage(
+        newestMessage,
+        "Could not load newest members."
+      );
+
+      setMessage(
+        contributorsMessage,
+        "Could not load top contributors."
+      );
+
+      setMessage(
+        message,
+        "Could not load members. Check your profiles table and its read policy."
+      );
+
       return;
     }
 
     profiles = data || [];
+
+    // Some profiles may not have a database ID in older schemas.
+    // Such profiles can appear in the directory but cannot be
+    // matched to posts for contributor counts.
+    renderNewestMembers();
     renderDirectory();
   }
+
+
+  /* =======================================================
+     11. LOAD PUBLIC COMMUNITY POST COUNTS
+     Only counts posts marked is_community = true.
+  ======================================================= */
+
+  async function loadPublicPostCounts() {
+    const { data, error } = await client
+      .from("posts")
+      .select("user_id")
+      .eq("is_community", true);
+
+    if (error) {
+      console.error(
+        "GARAGE Members: Could not load public post counts:",
+        error
+      );
+
+      publicPostCounts = new Map();
+
+      setMessage(
+        contributorsMessage,
+        "Contributor rankings are unavailable. Check public post read permissions."
+      );
+
+      return;
+    }
+
+    const counts = new Map();
+
+    (data || []).forEach((post) => {
+      if (!post.user_id) {
+        return;
+      }
+
+      counts.set(
+        post.user_id,
+        (counts.get(post.user_id) || 0) + 1
+      );
+    });
+
+    publicPostCounts = counts;
+
+    renderTopContributors();
+  }
+
+
+  /* =======================================================
+     12. INDIVIDUAL MEMBER PROFILE
+  ======================================================= */
 
   async function loadMember(username) {
     directoryView.hidden = true;
     memberView.hidden = false;
-    detailMessage.textContent = "Loading profile...";
+
+    setMessage(detailMessage, "Loading profile...");
     detail.replaceChildren();
 
     const { data, error } = await client
       .from("profiles")
-      .select("username, display_name, bio, favorite_car, avatar_url")
+      .select(PROFILE_FIELDS)
       .eq("username", username)
       .maybeSingle();
 
     if (error) {
-      console.error("Could not load profile:", error);
-      detailMessage.textContent =
-        "Could not load this profile. Please try again later.";
+      console.error(
+        "GARAGE Members: Could not load profile:",
+        error
+      );
+
+      setMessage(
+        detailMessage,
+        "Could not load this profile. Please try again later."
+      );
+
       return;
     }
 
     if (!data) {
-      detailMessage.textContent =
-        "Member not found. They may not have created a public profile yet.";
+      setMessage(
+        detailMessage,
+        "Member not found. They may not have created a public profile yet."
+      );
+
       return;
     }
 
+    // Profile picture.
     addAvatar(detail, data, true);
 
+    // Name and username.
     addTextElement(
       detail,
       "h2",
-      data.display_name || data.username
+      getMemberName(data)
     );
 
     addTextElement(
@@ -201,6 +611,7 @@
       "member-username"
     );
 
+    // Biography.
     addTextElement(detail, "h3", "About");
 
     addTextElement(
@@ -209,6 +620,7 @@
       data.bio || "This member hasn't added a bio yet."
     );
 
+    // Favorite car.
     addTextElement(detail, "h3", "Favorite car");
 
     addTextElement(
@@ -217,19 +629,64 @@
       data.favorite_car || "Not specified yet."
     );
 
-    detailMessage.textContent = "";
+    // Public contribution count.
+    if (data.id) {
+      const postCount = getPublicPostCount(data);
+      const label = postCount === 1
+        ? "public community post"
+        : "public community posts";
+
+      addTextElement(
+        detail,
+        "h3",
+        "Community contributions"
+      );
+
+      addTextElement(
+        detail,
+        "p",
+        postCount + " " + label
+      );
+    }
+
+    setMessage(detailMessage, "");
   }
+
+
+  /* =======================================================
+     13. SEARCH EVENTS
+  ======================================================= */
 
   search.addEventListener("input", renderDirectory);
 
-  const username = new URLSearchParams(
-    window.location.search
-  ).get("username");
 
-  if (username) {
-    loadMember(username.trim().toLowerCase());
-  } else {
-    loadDirectory();
+  /* =======================================================
+     14. PAGE STARTUP
+  ======================================================= */
+
+  async function initializeMembersPage() {
+    // A profile link takes priority over directory rendering.
+    const username = new URLSearchParams(
+      window.location.search
+    ).get("username");
+
+    if (username) {
+      await loadMember(username.trim().toLowerCase());
+      return;
+    }
+
+    // Load profiles and post counts independently.
+    // Contributor cards render when both results are available.
+    const [profilesResult, postsResult] = await Promise.all([
+      loadProfiles(),
+      loadPublicPostCounts()
+    ]);
+
+    // Render contributors again after both requests finish,
+    // ensuring profiles and post counts are both available.
+    renderTopContributors();
   }
-})();
 
+  initializeMembersPage();
+
+})();
