@@ -1481,3 +1481,474 @@
       preview.appendChild(element);
     });
   }
+  async function publishPost(event) {
+    event.preventDefault();
+
+    if (isPublishingPost) return;
+
+    if (!client?.auth) {
+      notify("Supabase is not initialized.");
+      return;
+    }
+
+    const caption = $("postText")?.value.trim() || "";
+
+    if (!caption && !selectedMedia) {
+      notify("Write something or choose a photo or video.");
+      return;
+    }
+
+    const { data, error: sessionError } = await client.auth.getSession();
+
+    if (sessionError) {
+      notify("Could not check your login. Please try again.");
+      return;
+    }
+
+    const user = data?.session?.user;
+
+    if (!user) {
+      notify("Please sign in before publishing.");
+      window.location.href = "auth.html";
+      return;
+    }
+
+    const form = $("postForm");
+    const button = form?.querySelector('button[type="submit"]');
+
+    isPublishingPost = true;
+    setButtonBusy(button, true, "Publishing...", "Publish post ↗");
+
+    let uploadedPath = null;
+
+    try {
+      let mediaUrl = null;
+
+      if (selectedMedia) {
+        const extension = getFileExtension(selectedMedia);
+
+        if (!extension) {
+          throw new Error("Unsupported media type.");
+        }
+
+        uploadedPath = `${user.id}/${makeUniqueId()}.${extension}`;
+
+        const { error: uploadError } = await client.storage
+          .from("post-images")
+          .upload(uploadedPath, selectedMedia, {
+            contentType: selectedMedia.type,
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = client.storage
+          .from("post-images")
+          .getPublicUrl(uploadedPath);
+
+        mediaUrl = publicData?.publicUrl || null;
+
+        if (!mediaUrl) {
+          throw new Error("Could not create the media URL.");
+        }
+      }
+
+      const { error: insertError } = await client.from("posts").insert({
+        user_id: user.id,
+        caption,
+        image_url: mediaUrl,
+        is_community: true
+      });
+
+      if (insertError) throw insertError;
+
+      if ($("postText")) $("postText").value = "";
+
+      clearMediaPreview();
+      await loadCommunityPosts();
+
+      notify("Your post was published!");
+    } catch (error) {
+      console.error("GARAGE publish error:", error);
+
+      if (uploadedPath) {
+        const { error: cleanupError } = await client.storage
+          .from("post-images")
+          .remove([uploadedPath]);
+
+        if (cleanupError) {
+          console.warn(
+            "GARAGE upload cleanup error:",
+            cleanupError.message
+          );
+        }
+      }
+
+      notify("Could not publish: " + (error.message || "Unknown error."));
+    } finally {
+      isPublishingPost = false;
+
+      setButtonBusy(
+        button,
+        false,
+        "Publishing...",
+        "Publish post ↗"
+      );
+    }
+  }
+
+  function setupFeedInteractions() {
+    const feed = $("feed");
+    if (!feed) return;
+
+    feed.addEventListener("click", async (event) => {
+      const likeButton = event.target.closest("[data-like]");
+      const commentButton = event.target.closest("[data-focus-comment]");
+
+      if (likeButton) {
+        event.preventDefault();
+
+        if (likeButton.disabled) return;
+
+        const user = await getSignedInUser();
+
+        if (!user) {
+          notify("Please sign in to like posts.");
+          return;
+        }
+
+        const postId = likeButton.dataset.like;
+        const wasLiked = likedPostIds.has(postId);
+
+        likeButton.disabled = true;
+
+        try {
+          if (wasLiked) {
+            const { error } = await client
+              .from("post_likes")
+              .delete()
+              .eq("post_id", postId)
+              .eq("user_id", user.id);
+
+            if (error) throw error;
+
+            likedPostIds.delete(postId);
+
+            postLikeCounts[postId] = Math.max(
+              0,
+              (postLikeCounts[postId] || 0) - 1
+            );
+          } else {
+            const { error } = await client
+              .from("post_likes")
+              .insert({
+                post_id: postId,
+                user_id: user.id
+              });
+
+            if (error && error.code !== "23505") {
+              throw error;
+            }
+
+            if (!error) {
+              postLikeCounts[postId] =
+                (postLikeCounts[postId] || 0) + 1;
+            }
+
+            likedPostIds.add(postId);
+          }
+
+          renderFeed();
+        } catch (error) {
+          console.error("GARAGE like error:", error);
+          notify("Could not update like: " + error.message);
+        }
+
+        return;
+      }
+
+      if (commentButton) {
+        const postId = commentButton.dataset.focusComment;
+
+        const form = Array.from(
+          feed.querySelectorAll("[data-comment]")
+        ).find((item) => item.dataset.comment === postId);
+
+        form?.querySelector('input[name="comment"]')?.focus();
+      }
+    });
+
+    feed.addEventListener("submit", async (event) => {
+      const form = event.target.closest("form[data-comment]");
+      if (!form) return;
+
+      event.preventDefault();
+
+      if (form.dataset.busy === "true") return;
+
+      const user = await getSignedInUser();
+
+      if (!user) {
+        notify("Please sign in to comment.");
+        return;
+      }
+
+      const input = form.elements.namedItem("comment");
+      const content = input?.value.trim() || "";
+
+      if (!content) return;
+
+      if (content.length > 1000) {
+        notify("Comments must be 1,000 characters or fewer.");
+        return;
+      }
+
+      const postId = form.dataset.comment;
+      const button = form.querySelector('button[type="submit"]');
+
+      form.dataset.busy = "true";
+
+      if (button) button.disabled = true;
+
+      try {
+        const { error } = await client.from("post_comments").insert({
+          post_id: postId,
+          user_id: user.id,
+          content
+        });
+
+        if (error) throw error;
+
+        input.value = "";
+
+        await loadCommunityPosts();
+
+        notify("Comment posted.");
+      } catch (error) {
+        console.error("GARAGE comment error:", error);
+        notify("Could not post comment: " + error.message);
+      } finally {
+        form.dataset.busy = "false";
+
+        if (button) button.disabled = false;
+      }
+    });
+  }
+
+  function renderMembers() {
+    const container = $("members");
+    if (!container) return;
+
+    container.innerHTML = demoMembers.map((member) => {
+      const following = followed.has(member.name);
+
+      return `
+        <div class="member">
+          <div class="avatar" aria-hidden="true">
+            ${escapeHTML(member.avatar)}
+          </div>
+
+          <div class="member-name">
+            <strong>${escapeHTML(member.name)}</strong>
+            <small>${escapeHTML(member.car)}</small>
+          </div>
+
+          <button
+            class="action ${following ? "following" : ""}"
+            type="button"
+            data-follow="${escapeHTML(member.name)}"
+            aria-pressed="${following}">
+            ${following ? "Following" : "Follow"}
+          </button>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function setupMemberInteractions() {
+    $("members")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-follow]");
+      if (!button) return;
+
+      const name = button.dataset.follow;
+
+      if (followed.has(name)) {
+        followed.delete(name);
+      } else {
+        followed.add(name);
+      }
+
+      renderMembers();
+
+      notify(
+        followed.has(name)
+          ? `Following ${name} locally.`
+          : `Unfollowed ${name} locally.`
+      );
+    });
+  }
+
+  function renderListings() {
+    const container = $("carListings");
+    if (!container) return;
+
+    if (!listings.length) {
+      container.innerHTML =
+        '<p class="muted">No demo listings yet. Add a listing to try this feature.</p>';
+      return;
+    }
+
+    container.innerHTML = listings.map((car) => `
+      <article class="listing-card">
+        <div class="feature-icon" aria-hidden="true">🚘</div>
+        <h3>${escapeHTML(car.name)}</h3>
+        <p class="price">$${Number(car.price).toLocaleString("en-US")}</p>
+        <p>${escapeHTML(car.details || "No additional details provided.")}</p>
+      </article>
+    `).join("");
+  }
+
+  function setupListingForm() {
+    $("listingForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const name = $("carName")?.value.trim() || "";
+      const price = Number($("carPrice")?.value);
+      const details = $("carDetails")?.value.trim() || "";
+
+      if (!name || !Number.isFinite(price) || price < 0) {
+        notify("Enter a valid car name and price.");
+        return;
+      }
+
+      listings.unshift({ name, price, details });
+
+      event.currentTarget.reset();
+
+      renderListings();
+
+      notify("Demo listing added. It is not saved to Supabase.");
+    });
+  }
+
+  function showConversationMessage(message, isError = false) {
+    const conversation = $("conversation");
+    if (!conversation) return;
+
+    conversation.replaceChildren();
+
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = message;
+
+    if (isError) {
+      p.style.color = "#ff7777";
+    }
+
+    conversation.appendChild(p);
+  }
+
+  function memberLabel(profile) {
+    return profile.display_name ||
+      profile.username ||
+      `Member ${String(profile.id).slice(0, 6)}`;
+  }
+
+  async function loadMessageMembers() {
+    const select = $("messageTo");
+    if (!select || !client) return;
+
+    const thisLoad = ++memberLoadNumber;
+    const previousValue = select.value;
+
+    select.disabled = true;
+    select.replaceChildren();
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Loading members...";
+
+    select.appendChild(placeholder);
+
+    try {
+      const user = await getSignedInUser();
+
+      if (thisLoad !== memberLoadNumber) return;
+
+      if (!user) {
+        placeholder.textContent = "Sign in to message members";
+
+        showConversationMessage(
+          "Please sign in to use private messages."
+        );
+
+        return;
+      }
+
+      const { data, error } = await client
+        .from("profiles")
+        .select("id, username, display_name")
+        .neq("id", user.id)
+        .order("username", { ascending: true });
+
+      if (error) throw error;
+      if (thisLoad !== memberLoadNumber) return;
+
+      select.replaceChildren();
+
+      const first = document.createElement("option");
+      first.value = "";
+      first.textContent = data?.length
+        ? "Choose a member..."
+        : "No other members found";
+
+      select.appendChild(first);
+
+      for (const profile of data || []) {
+        const option = document.createElement("option");
+
+        option.value = profile.id;
+        option.textContent = memberLabel(profile);
+
+        select.appendChild(option);
+      }
+
+      select.disabled = !(data && data.length);
+
+      const requested = new URL(window.location.href)
+        .searchParams.get("to");
+
+      const desired = requested || previousValue;
+
+      const validRecipient = Array.from(select.options)
+        .some((option) => option.value === desired);
+
+      if (validRecipient && desired) {
+        select.value = desired;
+        await loadConversation();
+      } else {
+        activeConversationId = null;
+
+        showConversationMessage(
+          "Choose a member to open a conversation."
+        );
+      }
+    } catch (error) {
+      if (thisLoad !== memberLoadNumber) return;
+
+      console.error("GARAGE member list error:", error);
+
+      select.replaceChildren();
+
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Could not load members";
+
+      select.appendChild(option);
+
+      showConversationMessage(
+        "Could not load members: " + error.message,
+        true
+      );
+    }
+  }
