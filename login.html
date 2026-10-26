@@ -1,0 +1,39 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login | GARAGE</title>
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <main class="auth-card">
+    <a class="brand" href="index.html">GARAGE<span>.</span></a>
+    <h1>Welcome back</h1>
+    <p class="subtitle">Sign in to your GARAGE account.</p>
+
+    <form id="login-form">
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email"
+        autocomplete="email" required>
+
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password"
+        autocomplete="current-password" required>
+
+      <button type="submit" id="login-button">Log in</button>
+      <p id="login-message" class="message" role="status"></p>
+    </form>
+
+    <p class="switch-link">
+      New to GARAGE? <a href="signup.html">Create an account</a>
+    </p>
+    <a class="back-link" href="index.html">← Back to GARAGE</a>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
+  <script src="auth-pages.js"></script>
+</body>
+</html>
