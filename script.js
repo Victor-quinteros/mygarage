@@ -1,8 +1,28 @@
+/* =========================================================
+   GARAGE — MAIN WEBSITE SCRIPT
+   ---------------------------------------------------------
+   Handles:
+   1. Authentication state and profile loading
+   2. Public community feed (visible to guests)
+   3. Creating posts and uploading media
+   4. Search, navigation, and feed interactions
+   5. Demo-only members, marketplace, comments, and messages
+
+   IMPORTANT:
+   - Public feed visibility is controlled by the Supabase query
+     AND your Supabase Row Level Security (RLS) policies.
+   - Likes, comments, follows, listings, and messages in this
+     version are local demo features; they are not saved to
+     Supabase.
+========================================================= */
 
 "use strict";
 
-const $ = (id) => document.getElementById(id);
+/* =========================================================
+   1. SHARED STATE AND ELEMENT HELPERS
+========================================================= */
 
+const $ = (id) => document.getElementById(id);
 const client = window.garageSupabase;
 
 const demoMembers = [
@@ -11,63 +31,73 @@ const demoMembers = [
   { name: "Turbo Mike", car: "Subaru WRX", avatar: "T" }
 ];
 
-// Local-only demo features.
+// These arrays/objects are intentionally temporary demo data.
 let listings = [];
 let messages = {};
 let followed = new Set();
 let localLikes = new Set();
 let localComments = {};
-let toastTimer;
 
+let toastTimer = null;
 let communityPosts = [];
 let currentUser = null;
 let currentProfile = null;
 let selectedMedia = null;
 let mediaPreviewUrl = "";
+let isPublishingPost = false;
 
-// =========================
-// GENERAL HELPERS
-// =========================
+/* =========================================================
+   2. GENERAL HELPERS
+========================================================= */
 
+// Escape text before inserting it into HTML.
 function escapeHTML(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
     '"': "&quot;",
     "'": "&#39;"
-  })[char]);
+  })[character]);
 }
 
+// Display a small status message if the page has a toast element.
 function notify(message) {
   const toast = $("toast");
+
   if (!toast) {
-    console.log(message);
+    console.log(`[GARAGE] ${message}`);
     return;
   }
 
   toast.textContent = message;
   toast.classList.add("show");
 
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
+  if (toastTimer) clearTimeout(toastTimer);
+
+  toastTimer = window.setTimeout(() => {
     toast.classList.remove("show");
-  }, 2500);
+  }, 2800);
 }
 
+// Show a safe loading/error message in the community feed.
 function showStatus(message) {
   const feed = $("feed");
-  if (feed) {
-    feed.innerHTML = `<p class="muted">${escapeHTML(message)}</p>`;
-  }
+  if (!feed) return;
+
+  feed.innerHTML = `<p class="muted">${escapeHTML(message)}</p>`;
 }
 
 function getDisplayName(profile, userId) {
   return (
     profile?.display_name ||
     profile?.username ||
-    (userId ? `Member ${userId.slice(0, 6)}` : "Garage Member")
+    (userId ? `Member ${String(userId).slice(0, 6)}` : "Garage Member")
   );
+}
+
+function getCurrentDisplayName() {
+  return getDisplayName(currentProfile, currentUser?.id);
 }
 
 function formatDate(value) {
@@ -86,29 +116,43 @@ function isVideoUrl(url) {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || "");
 }
 
-// =========================
-// SUPABASE PROFILE
-// =========================
+function makeInitials(name) {
+  return escapeHTML((String(name || "G").trim()[0] || "G").toUpperCase());
+}
 
+function setButtonBusy(button, busy, busyText, idleText) {
+  if (!button) return;
+
+  button.disabled = busy;
+  button.textContent = busy ? busyText : idleText;
+}
+
+/* =========================================================
+   3. AUTHENTICATION AND CURRENT PROFILE
+========================================================= */
+
+// Use getSession() here. A visitor who is logged out is normal;
+// a missing session should not be reported as a login failure.
 async function loadCurrentUser() {
-  if (!client) {
-    console.error("Supabase client not found.");
-    return;
+  currentUser = null;
+  currentProfile = null;
+
+  if (!client?.auth) {
+    console.error("GARAGE: Supabase client is not available.");
+    return null;
   }
 
-  const { data, error } = await client.auth.getUser();
+  const { data, error } = await client.auth.getSession();
 
   if (error) {
-    console.error("Could not check login:", error.message);
-    return;
+    console.error("GARAGE: Could not read the current session:", error.message);
+    return null;
   }
 
-  currentUser = data.user || null;
+  currentUser = data.session?.user || null;
 
-  if (!currentUser) {
-    currentProfile = null;
-    return;
-  }
+  // Guests are allowed to continue and read public community posts.
+  if (!currentUser) return null;
 
   const { data: profile, error: profileError } = await client
     .from("profiles")
@@ -117,20 +161,57 @@ async function loadCurrentUser() {
     .maybeSingle();
 
   if (profileError) {
-    console.error("Could not load profile:", profileError.message);
+    console.error("GARAGE: Could not load the profile:", profileError.message);
   }
 
   currentProfile = profile || null;
+  return currentUser;
 }
 
-function getCurrentDisplayName() {
-  return getDisplayName(currentProfile, currentUser?.id);
+// Keep state updated if someone signs in or out while the page is open.
+function watchAuthenticationChanges() {
+  if (!client?.auth) return;
+
+  client.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+
+    if (!currentUser) {
+      currentProfile = null;
+      // Do not clear the public feed when a user signs out.
+      renderFeed();
+      return;
+    }
+
+    // Supabase recommends keeping auth-state callbacks lightweight.
+    // Load the profile after the callback completes.
+    Promise.resolve().then(async () => {
+      const { data: profile, error } = await client
+        .from("profiles")
+        .select("id, username, display_name, bio, favorite_car, avatar_url")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("GARAGE: Could not refresh the profile:", error.message);
+        return;
+      }
+
+      // Ignore a stale profile response if the user changed meanwhile.
+      if (currentUser?.id === session?.user?.id) {
+        currentProfile = profile || null;
+        renderFeed();
+      }
+    });
+  });
 }
 
-// =========================
-// COMMUNITY FEED
-// =========================
+/* =========================================================
+   4. PUBLIC COMMUNITY FEED
+========================================================= */
 
+// This query deliberately does NOT require a logged-in user.
+// Guests can read community posts when Supabase RLS permits public
+// SELECT access for rows where is_community = true.
 async function loadCommunityPosts() {
   const feed = $("feed");
   if (!feed) return;
@@ -140,27 +221,28 @@ async function loadCommunityPosts() {
     return;
   }
 
-  feed.innerHTML = `<p class="muted">Loading community posts...</p>`;
+  showStatus("Loading community posts...");
 
-  
-const { data, error } = await client
-  .from("posts")
-  .select("id, user_id, caption, image_url, created_at")
-  .eq("is_community", true)
-  .order("created_at", { ascending: false });
-
+  const { data, error } = await client
+    .from("posts")
+    .select("id, user_id, caption, image_url, created_at, is_community")
+    .eq("is_community", true)
+    .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Could not load posts:", error.message);
-    showStatus("Could not load posts. Check your Supabase login and table permissions.");
+    console.error("GARAGE: Could not load public posts:", error.message);
+    showStatus(
+      "Could not load community posts. Check your Supabase connection and public-post permissions."
+    );
     return;
   }
 
   const posts = data || [];
-  const userIds = [...new Set(posts.map(post => post.user_id).filter(Boolean))];
+  const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
+  const profilesById = {};
 
-  let profilesById = {};
-
+  // Author profiles are optional. A profile lookup failure should not
+  // prevent the public posts themselves from being displayed.
   if (userIds.length) {
     const { data: profiles, error: profilesError } = await client
       .from("profiles")
@@ -168,7 +250,7 @@ const { data, error } = await client
       .in("id", userIds);
 
     if (profilesError) {
-      console.error("Could not load post authors:", profilesError.message);
+      console.warn("GARAGE: Could not load some post authors:", profilesError.message);
     }
 
     for (const profile of profiles || []) {
@@ -176,7 +258,7 @@ const { data, error } = await client
     }
   }
 
-  communityPosts = posts.map(post => ({
+  communityPosts = posts.map((post) => ({
     ...post,
     authorProfile: profilesById[post.user_id] || null
   }));
@@ -184,14 +266,39 @@ const { data, error } = await client
   renderFeed();
 }
 
+function renderPostMedia(mediaUrl) {
+  if (!mediaUrl) return "";
+
+  const safeUrl = escapeHTML(mediaUrl);
+
+  if (isVideoUrl(mediaUrl)) {
+    return `
+      <video
+        class="post-media"
+        controls
+        preload="metadata"
+        src="${safeUrl}"
+      ></video>
+    `;
+  }
+
+  return `
+    <img
+      class="post-media"
+      loading="lazy"
+      src="${safeUrl}"
+      alt="Photo shared in the GARAGE community"
+    >
+  `;
+}
+
 function renderFeed() {
   const feed = $("feed");
   if (!feed) return;
 
-  const searchInput = $("search");
-  const query = (searchInput?.value || "").trim().toLowerCase();
+  const query = ($("search")?.value || "").trim().toLowerCase();
 
-  const visiblePosts = communityPosts.filter(post => {
+  const visiblePosts = communityPosts.filter((post) => {
     const profile = post.authorProfile;
     const searchableText = [
       getDisplayName(profile, post.user_id),
@@ -203,34 +310,44 @@ function renderFeed() {
   });
 
   if (!visiblePosts.length) {
-    feed.innerHTML = communityPosts.length
-      ? `<p class="muted">No matching posts. Try another search.</p>`
-      : `<p class="muted">No community posts yet. Be the first to share a build!</p>`;
+    showStatus(
+      communityPosts.length
+        ? "No matching posts. Try another search."
+        : "No public community posts yet. Be the first to share a build!"
+    );
     return;
   }
 
-  feed.innerHTML = visiblePosts.map(post => {
+  feed.innerHTML = visiblePosts.map((post) => {
     const profile = post.authorProfile;
     const name = getDisplayName(profile, post.user_id);
-    const avatar = profile?.avatar_url;
-
-    const initials = escapeHTML(name.charAt(0).toUpperCase());
-    const isOwnPost = currentUser?.id === post.user_id;
+    const avatarUrl = profile?.avatar_url || "";
+    const isOwnPost = Boolean(currentUser && currentUser.id === post.user_id);
     const liked = localLikes.has(post.id);
     const comments = localComments[post.id] || [];
-    const mediaUrl = post.image_url || "";
 
-    const avatarMarkup = avatar
-      ? `<img class="avatar" src="${escapeHTML(avatar)}" alt="" style="object-fit:cover;">`
-      : `<div class="avatar">${initials}</div>`;
+    const avatarMarkup = avatarUrl
+      ? `
+        <img
+          class="avatar"
+          src="${escapeHTML(avatarUrl)}"
+          alt="${escapeHTML(name)}'s avatar"
+          loading="lazy"
+          style="object-fit:cover;"
+        >
+      `
+      : `<div class="avatar" aria-hidden="true">${makeInitials(name)}</div>`;
 
-    let mediaMarkup = "";
+    const captionMarkup = post.caption
+      ? `<div class="post-copy">${escapeHTML(post.caption).replace(/\n/g, "<br>")}</div>`
+      : "";
 
-    if (mediaUrl) {
-      mediaMarkup = isVideoUrl(mediaUrl)
-        ? `<video class="post-media" controls preload="metadata" src="${escapeHTML(mediaUrl)}"></video>`
-        : `<img class="post-media" loading="lazy" src="${escapeHTML(mediaUrl)}" alt="Community post media">`;
-    }
+    const commentsMarkup = comments.map((comment) => `
+      <div class="comment">
+        <strong>${escapeHTML(comment.author)}:</strong>
+        ${escapeHTML(comment.text)}
+      </div>
+    `).join("");
 
     return `
       <article class="post" data-post-id="${escapeHTML(post.id)}">
@@ -240,42 +357,42 @@ function renderFeed() {
             <strong>${escapeHTML(name)}</strong>
             <p class="muted">
               ${escapeHTML(profile?.favorite_car || "Car enthusiast")}
-              · ${escapeHTML(formatDate(post.created_at))}
+              ${post.created_at ? ` · ${escapeHTML(formatDate(post.created_at))}` : ""}
             </p>
           </div>
         </div>
 
-        ${post.caption
-          ? `<div class="post-copy">${escapeHTML(post.caption).replace(/\n/g, "<br>")}</div>`
-          : ""}
-
-        ${mediaMarkup}
+        ${captionMarkup}
+        ${renderPostMedia(post.image_url)}
 
         <div class="post-actions">
-          <button class="action ${liked ? "liked" : ""}"
-            type="button" data-like="${escapeHTML(post.id)}">
-            ${liked ? "♥ Liked" : "♡ Like"}
-          </button>
+          <button
+            class="action ${liked ? "liked" : ""}"
+            type="button"
+            data-like="${escapeHTML(post.id)}"
+            aria-pressed="${liked ? "true" : "false"}"
+          >${liked ? "♥ Liked" : "♡ Like"}</button>
 
-          <button class="action" type="button"
-            data-focus-comment="${escapeHTML(post.id)}">
-            ▢ Comments · ${comments.length}
-          </button>
+          <button
+            class="action"
+            type="button"
+            data-focus-comment="${escapeHTML(post.id)}"
+          >Comments · ${comments.length}</button>
 
           ${isOwnPost ? `<span class="muted">Your post</span>` : ""}
         </div>
 
-        <div class="comment-list">
-          ${comments.map(comment => `
-            <div class="comment">
-              <strong>${escapeHTML(comment.author)}:</strong>
-              ${escapeHTML(comment.text)}
-            </div>
-          `).join("")}
-        </div>
+        <div class="comment-list">${commentsMarkup}</div>
 
         <form class="comment-form" data-comment="${escapeHTML(post.id)}">
-          <input name="comment" placeholder="Write a comment..." maxlength="1000" required>
+          <input
+            name="comment"
+            type="text"
+            placeholder="Write a comment..."
+            maxlength="1000"
+            aria-label="Write a comment"
+            required
+          >
           <button class="action" type="submit">Send</button>
         </form>
       </article>
@@ -283,11 +400,11 @@ function renderFeed() {
   }).join("");
 }
 
-// =========================
-// POST MEDIA PREVIEW
-// =========================
+/* =========================================================
+   5. POST IMAGE / VIDEO PICKER AND PREVIEW
+========================================================= */
 
-function clearMediaPreview() {
+function clearMediaPreview({ clearInput = true } = {}) {
   if (mediaPreviewUrl) {
     URL.revokeObjectURL(mediaPreviewUrl);
   }
@@ -295,28 +412,42 @@ function clearMediaPreview() {
   mediaPreviewUrl = "";
   selectedMedia = null;
 
-  if ($("postMedia")) $("postMedia").value = "";
-  if ($("fileName")) $("fileName").textContent = "No media selected";
-  if ($("mediaPreview")) $("mediaPreview").innerHTML = "";
+  if (clearInput && $("postMedia")) {
+    $("postMedia").value = "";
+  }
+
+  if ($("fileName")) {
+    $("fileName").textContent = "No media selected";
+  }
+
+  if ($("mediaPreview")) {
+    $("mediaPreview").innerHTML = "";
+  }
 }
 
 function setupMediaPicker() {
   const input = $("postMedia");
   if (!input) return;
 
-  input.addEventListener("change", event => {
-    clearMediaPreview();
+  input.addEventListener("change", (event) => {
+    // Save the file BEFORE clearing the old preview. Clearing the input
+    // first would also clear the newly selected file in some browsers.
+    const file = event.target.files?.[0] || null;
 
-    const file = event.target.files?.[0];
+    clearMediaPreview({ clearInput: false });
+
     if (!file) return;
 
-    if (!file.type.startsWith("image/") &&
-        !file.type.startsWith("video/")) {
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      input.value = "";
       notify("Choose an image or video file.");
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
+    const maxFileSize = 8 * 1024 * 1024;
+
+    if (file.size > maxFileSize) {
+      input.value = "";
       notify("Choose a photo or video under 8 MB.");
       return;
     }
@@ -324,24 +455,30 @@ function setupMediaPicker() {
     selectedMedia = file;
     mediaPreviewUrl = URL.createObjectURL(file);
 
-    if ($("fileName")) $("fileName").textContent = file.name;
+    if ($("fileName")) {
+      $("fileName").textContent = file.name;
+    }
 
     if ($("mediaPreview")) {
+      const safePreviewUrl = escapeHTML(mediaPreviewUrl);
+
       $("mediaPreview").innerHTML = file.type.startsWith("video/")
-        ? `<video class="post-media" controls src="${mediaPreviewUrl}"></video>`
-        : `<img class="post-media" src="${mediaPreviewUrl}" alt="Selected media preview">`;
+        ? `<video class="post-media" controls preload="metadata" src="${safePreviewUrl}"></video>`
+        : `<img class="post-media" src="${safePreviewUrl}" alt="Selected media preview">`;
     }
   });
 }
 
-// =========================
-// CREATE SUPABASE POST
-// =========================
+/* =========================================================
+   6. CREATE A PUBLIC COMMUNITY POST
+========================================================= */
 
 async function publishPost(event) {
   event.preventDefault();
 
-  if (!client) {
+  if (isPublishingPost) return;
+
+  if (!client?.auth) {
     notify("Supabase is not initialized.");
     return;
   }
@@ -353,39 +490,57 @@ async function publishPost(event) {
     return;
   }
 
-  const { data: authData, error: authError } = await client.auth.getUser();
+  // Use getSession so a logged-out visitor is handled as a normal guest.
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
 
-  if (authError || !authData.user) {
-    notify("Please log in before publishing a post.");
+  if (sessionError) {
+    console.error("GARAGE: Could not check the current session:", sessionError.message);
+    notify("Could not check your login. Please try again.");
     return;
   }
 
-  const user = authData.user;
-  const submitButton = $("postForm")?.querySelector('button[type="submit"]');
+  const user = sessionData.session?.user || null;
 
-  if (submitButton) {
-    submitButton.disabled = true;
-    submitButton.textContent = "Publishing...";
+  if (!user) {
+    notify("Please sign in before publishing a post.");
+    window.location.href = "auth.html";
+    return;
   }
+
+  const form = $("postForm");
+  const submitButton = form?.querySelector('button[type="submit"]');
+
+  isPublishingPost = true;
+  setButtonBusy(submitButton, true, "Publishing...", "Publish post ↗");
 
   let uploadedPath = null;
 
   try {
     let mediaUrl = null;
 
+    // Upload selected media to the public post-images bucket.
     if (selectedMedia) {
-      const extension = selectedMedia.name.includes(".")
+      const extensionFromName = selectedMedia.name.includes(".")
         ? selectedMedia.name.split(".").pop().toLowerCase()
+        : "";
+
+      const extension = /^[a-z0-9]{1,8}$/.test(extensionFromName)
+        ? extensionFromName
         : "bin";
 
-      uploadedPath =
-        `${user.id}/${crypto.randomUUID()}.${extension}`;
+      const uniqueId = (
+        window.crypto?.randomUUID
+          ? window.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+
+      uploadedPath = `${user.id}/${uniqueId}.${extension}`;
 
       const { error: uploadError } = await client
         .storage
         .from("post-images")
         .upload(uploadedPath, selectedMedia, {
-          contentType: selectedMedia.type,
+          contentType: selectedMedia.type || "application/octet-stream",
           upsert: false
         });
 
@@ -396,31 +551,34 @@ async function publishPost(event) {
         .from("post-images")
         .getPublicUrl(uploadedPath);
 
-      mediaUrl = publicData.publicUrl;
+      mediaUrl = publicData?.publicUrl || null;
+
+      if (!mediaUrl) {
+        throw new Error("The uploaded media URL could not be created.");
+      }
     }
 
-   const { error: insertError } = await client
-  .from("posts")
-  .insert({
-    user_id: user.id,
-    caption: text,
-    image_url: mediaUrl,
-    is_community: true
-  });
+    // is_community=true makes this a public community post.
+    const { error: insertError } = await client
+      .from("posts")
+      .insert({
+        user_id: user.id,
+        caption: text,
+        image_url: mediaUrl,
+        is_community: true
+      });
 
     if (insertError) throw insertError;
 
     if ($("postText")) $("postText").value = "";
-
     clearMediaPreview();
 
     await loadCommunityPosts();
     notify("Your post was published!");
   } catch (error) {
-    console.error("Post publishing failed:", error);
+    console.error("GARAGE: Post publishing failed:", error);
 
-    // If the database insert failed after an upload, try to remove
-    // the unused uploaded file.
+    // Remove the uploaded file if saving the database row failed.
     if (uploadedPath) {
       const { error: cleanupError } = await client
         .storage
@@ -428,150 +586,53 @@ async function publishPost(event) {
         .remove([uploadedPath]);
 
       if (cleanupError) {
-        console.error("Uploaded file cleanup failed:", cleanupError.message);
+        console.error("GARAGE: Uploaded file cleanup failed:", cleanupError.message);
       }
     }
 
-    notify(error.message || "Could not publish your post.");
+    notify(error?.message || "Could not publish your post.");
   } finally {
-    if (submitButton) {
-      submitButton.disabled = false;
-      submitButton.textContent = "Publish post ↗";
-    }
+    isPublishingPost = false;
+    setButtonBusy(submitButton, false, "Publishing...", "Publish post ↗");
   }
 }
-
-// =========================
-// DEMO MEMBERS
-// =========================
+/* =========================================================
+   7. DEMO MEMBERS AND FOLLOW BUTTONS
+   These actions are temporary and are not saved to Supabase.
+========================================================= */
 
 function renderMembers() {
   const container = $("members");
   if (!container) return;
 
-  container.innerHTML = demoMembers.map(member => `
-    <div class="member">
-      <div class="avatar">${escapeHTML(member.avatar)}</div>
+  container.innerHTML = demoMembers.map((member) => {
+    const isFollowing = followed.has(member.name);
 
-      <div class="member-name">
-        <strong>${escapeHTML(member.name)}</strong>
-        <small>${escapeHTML(member.car)}</small>
+    return `
+      <div class="member">
+        <div class="avatar" aria-hidden="true">${escapeHTML(member.avatar)}</div>
+
+        <div class="member-name">
+          <strong>${escapeHTML(member.name)}</strong>
+          <small>${escapeHTML(member.car)}</small>
+        </div>
+
+        <button
+          class="action ${isFollowing ? "following" : ""}"
+          type="button"
+          data-follow="${escapeHTML(member.name)}"
+          aria-pressed="${isFollowing ? "true" : "false"}"
+        >${isFollowing ? "Following" : "Follow"}</button>
       </div>
-
-      <button class="action ${followed.has(member.name) ? "following" : ""}"
-        type="button" data-follow="${escapeHTML(member.name)}">
-        ${followed.has(member.name) ? "Following" : "Follow"}
-      </button>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
-
-// =========================
-// DEMO MARKETPLACE
-// =========================
-
-function renderListings() {
-  const container = $("carListings");
-  if (!container) return;
-
-  container.innerHTML = listings.length
-    ? listings.map(car => `
-      <article class="listing-card">
-        <div class="feature-icon">🚘</div>
-        <h3>${escapeHTML(car.name)}</h3>
-        <p class="price">$${Number(car.price).toLocaleString("en-US")}</p>
-        <p>${escapeHTML(car.details || "No additional details provided.")}</p>
-      </article>
-    `).join("")
-    : `<p class="muted">No cars listed yet. Add your first listing above.</p>`;
-}
-
-function setupListingForm() {
-  const form = $("listingForm");
-  if (!form) return;
-
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-
-    const name = $("carName")?.value.trim();
-    const price = Number($("carPrice")?.value);
-    const details = $("carDetails")?.value.trim();
-
-    if (!name || !Number.isFinite(price) || price < 0) {
-      notify("Enter a valid car name and price.");
-      return;
-    }
-
-    listings.unshift({ name, price, details });
-    form.reset();
-    renderListings();
-    notify("Demo listing added. It is not saved to Supabase.");
-  });
-}
-
-// =========================
-// DEMO COMMENTS AND LIKES
-// =========================
-
-function setupFeedInteractions() {
-  const feed = $("feed");
-  if (!feed) return;
-
-  feed.addEventListener("click", event => {
-    const likeButton = event.target.closest("[data-like]");
-    const commentButton = event.target.closest("[data-focus-comment]");
-
-    if (likeButton) {
-      const id = likeButton.dataset.like;
-
-      if (localLikes.has(id)) {
-        localLikes.delete(id);
-      } else {
-        localLikes.add(id);
-      }
-
-      renderFeed();
-    }
-
-    if (commentButton) {
-      const id = commentButton.dataset.focusComment;
-      feed.querySelector(`[data-comment="${CSS.escape(id)}"] input`)?.focus();
-    }
-  });
-
-  feed.addEventListener("submit", event => {
-    const form = event.target.closest("[data-comment]");
-    if (!form) return;
-
-    event.preventDefault();
-
-    const input = form.elements.comment;
-    const text = input.value.trim();
-    if (!text) return;
-
-    const id = form.dataset.comment;
-
-    if (!localComments[id]) localComments[id] = [];
-
-    localComments[id].push({
-      author: getCurrentDisplayName(),
-      text
-    });
-
-    renderFeed();
-    notify("Comment added locally. It is not saved to Supabase.");
-  });
-}
-
-// =========================
-// DEMO FOLLOWS
-// =========================
 
 function setupMemberInteractions() {
   const container = $("members");
   if (!container) return;
 
-  container.addEventListener("click", event => {
+  container.addEventListener("click", (event) => {
     const button = event.target.closest("[data-follow]");
     if (!button) return;
 
@@ -584,90 +645,216 @@ function setupMemberInteractions() {
     }
 
     renderMembers();
-    notify(followed.has(name)
-      ? `Following ${name} locally`
-      : `Unfollowed ${name} locally`);
+    notify(followed.has(name) ? `Following ${name} locally.` : `Unfollowed ${name} locally.`);
   });
 }
 
-// =========================
-// DEMO MESSAGES
-// =========================
+/* =========================================================
+   8. DEMO MARKETPLACE
+   Listings are temporary and disappear when the page reloads.
+========================================================= */
+
+function renderListings() {
+  const container = $("carListings");
+  if (!container) return;
+
+  if (!listings.length) {
+    container.innerHTML = `<p class="muted">No demo listings yet. Add a listing to try this feature.</p>`;
+    return;
+  }
+
+  container.innerHTML = listings.map((car) => `
+    <article class="listing-card">
+      <div class="feature-icon" aria-hidden="true">🚘</div>
+      <h3>${escapeHTML(car.name)}</h3>
+      <p class="price">$${Number(car.price).toLocaleString("en-US")}</p>
+      <p>${escapeHTML(car.details || "No additional details provided.")}</p>
+    </article>
+  `).join("");
+}
+
+function setupListingForm() {
+  const form = $("listingForm");
+  if (!form) return;
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    const name = $("carName")?.value.trim() || "";
+    const price = Number($("carPrice")?.value);
+    const details = $("carDetails")?.value.trim() || "";
+
+    if (!name || !Number.isFinite(price) || price < 0) {
+      notify("Enter a valid car name and price.");
+      return;
+    }
+
+    listings.unshift({ name, price, details });
+    form.reset();
+    renderListings();
+    notify("Demo listing added. It is not saved to Supabase.");
+  });
+}
+/* =========================================================
+   9. DEMO LIKES AND COMMENTS
+   These actions are temporary and are not saved to Supabase.
+========================================================= */
+
+function setupFeedInteractions() {
+  const feed = $("feed");
+  if (!feed) return;
+
+  feed.addEventListener("click", (event) => {
+    const likeButton = event.target.closest("[data-like]");
+    const commentButton = event.target.closest("[data-focus-comment]");
+
+    if (likeButton) {
+      const postId = likeButton.dataset.like;
+
+      if (localLikes.has(postId)) {
+        localLikes.delete(postId);
+      } else {
+        localLikes.add(postId);
+      }
+
+      renderFeed();
+      return;
+    }
+
+    if (commentButton) {
+      const postId = commentButton.dataset.focusComment;
+      const form = [...feed.querySelectorAll("[data-comment]")]
+        .find((item) => item.dataset.comment === postId);
+
+      form?.querySelector('input[name="comment"]')?.focus();
+    }
+  });
+
+  feed.addEventListener("submit", (event) => {
+    const form = event.target.closest("form[data-comment]");
+    if (!form) return;
+
+    event.preventDefault();
+
+    const input = form.elements.namedItem("comment");
+    const text = input?.value.trim() || "";
+    if (!text) return;
+
+    const postId = form.dataset.comment;
+
+    if (!localComments[postId]) localComments[postId] = [];
+
+    localComments[postId].push({
+      author: getCurrentDisplayName(),
+      text
+    });
+
+    renderFeed();
+    notify("Comment added locally. It is not saved to Supabase.");
+  });
+}
+
+/* =========================================================
+   10. DEMO MESSAGES
+   Messages are temporary and are not saved to Supabase.
+========================================================= */
 
 function renderMessages() {
-  const name = $("messageTo")?.value.trim();
+  const recipient = $("messageTo")?.value.trim() || "";
   const conversationElement = $("conversation");
 
   if (!conversationElement) return;
 
-  const conversation = messages[name] || [];
+  const conversation = messages[recipient] || [];
 
-  conversationElement.innerHTML = conversation.map(message => `
-    <div class="message">
-      <strong>${escapeHTML(message.from)}:</strong>
-      ${escapeHTML(message.text)}
-    </div>
-  `).join("") || `<p class="muted">No messages in this demo conversation.</p>`;
+  conversationElement.innerHTML = conversation.length
+    ? conversation.map((message) => `
+        <div class="message">
+          <strong>${escapeHTML(message.from)}:</strong>
+          ${escapeHTML(message.text)}
+        </div>
+      `).join("")
+    : `<p class="muted">No messages in this demo conversation.</p>`;
 }
 
 function setupMessages() {
   $("messageTo")?.addEventListener("input", renderMessages);
 
-  $("messageForm")?.addEventListener("submit", event => {
+  $("messageForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    const name = $("messageTo")?.value.trim();
-    const text = $("messageText")?.value.trim();
+    const recipient = $("messageTo")?.value.trim() || "";
+    const text = $("messageText")?.value.trim() || "";
 
-    if (!name || !text) return;
+    if (!recipient || !text) return;
 
-    if (!messages[name]) messages[name] = [];
+    if (!messages[recipient]) messages[recipient] = [];
 
-    messages[name].push({
+    messages[recipient].push({
       from: getCurrentDisplayName(),
       text
     });
 
-    $("messageText").value = "";
+    if ($("messageText")) $("messageText").value = "";
+
     renderMessages();
     notify("Demo message added. It is not saved to Supabase.");
   });
 }
+/* =========================================================
+   11. HOMEPAGE NAVIGATION AND SEARCH
+========================================================= */
 
-// =========================
-// HOMEPAGE NAVIGATION
-// =========================
-
-function showPage(page) {
-  document.querySelectorAll(".page").forEach(section => {
+function showPage(pageName) {
+  document.querySelectorAll(".page").forEach((section) => {
     section.classList.add("hidden");
   });
 
-  const target = $(page + "Page");
-  if (target) target.classList.remove("hidden");
+  const target = $(`${pageName}Page`);
 
-  document.querySelectorAll(".sidebar .nav[data-page]").forEach(button => {
-    button.classList.toggle("active", button.dataset.page === page);
+  if (target) {
+    target.classList.remove("hidden");
+  } else {
+    console.warn(`GARAGE: Could not find page section "${pageName}Page".`);
+  }
+
+  document.querySelectorAll(".sidebar .nav[data-page]").forEach((button) => {
+    const isActive = button.dataset.page === pageName;
+    button.classList.toggle("active", isActive);
+
+    if (isActive) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
   });
 }
 
 function setupNavigation() {
-  document.querySelectorAll(".sidebar .nav[data-page]").forEach(button => {
+  document.querySelectorAll(".sidebar .nav[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
-      const page = button.dataset.page;
+      const pageName = button.dataset.page;
+      if (!pageName) return;
 
-      if (page === "members") {
+      // The members area is a separate page in this website.
+      if (pageName === "members") {
         window.location.href = "members.html";
         return;
       }
 
-      showPage(page);
+      showPage(pageName);
     });
   });
 
+  // The main page's inline authentication code may also handle this
+  // button. This listener only handles the normal in-page navigation.
   $("shareBtn")?.addEventListener("click", () => {
     showPage("feed");
-    $("postText")?.focus();
+
+    window.setTimeout(() => {
+      $("postText")?.focus();
+    }, 0);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
@@ -680,9 +867,9 @@ function setupNavigation() {
   });
 }
 
-// =========================
-// STARTUP
-// =========================
+/* =========================================================
+   12. STARTUP
+========================================================= */
 
 async function init() {
   setupNavigation();
@@ -694,28 +881,35 @@ async function init() {
 
   $("postForm")?.addEventListener("submit", publishPost);
 
-  if (!client) {
-    showStatus("Supabase client not found. Check supabase-client.js.");
-    renderMembers();
-    renderListings();
-    renderMessages();
-    return;
-  }
-
-  await loadCurrentUser();
-
   renderMembers();
   renderListings();
   renderMessages();
 
+  if (!client) {
+    console.error("GARAGE: Supabase client not found. Check supabase-client.js.");
+    showStatus("Supabase client not found. Check supabase-client.js.");
+    return;
+  }
+
+  // Subscribe before loading the initial session so later sign-in/sign-out
+  // events keep the page state in sync.
+  watchAuthenticationChanges();
+
+  await loadCurrentUser();
+
+  // Always load the public feed, whether the visitor is signed in or not.
   await loadCommunityPosts();
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", init, { once: true });
 } else {
   init();
 }
+
+/* =========================================================
+   13. CLEANUP
+========================================================= */
 
 window.addEventListener("beforeunload", () => {
   if (mediaPreviewUrl) {
