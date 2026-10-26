@@ -1,48 +1,52 @@
-/* =========================================================
-   GARAGE — SUPABASE CLIENT
-   ---------------------------------------------------------
-   Responsibilities:
-   1. Verify the Supabase library is loaded.
-   2. Initialize the shared Supabase client.
-   3. Make the client available to auth.js and script.js.
 
-   IMPORTANT:
-   - Load the Supabase CDN library before this file.
-   - Use the publishable key in browser-side code.
-   - Never put a Supabase service_role key in this file.
-========================================================= */
+(() => {
+  "use strict";
 
+  // Replace these with your own Supabase project details.
+  const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";
+  const SUPABASE_KEY = "YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY";
 
-/* =========================================================
-   1. SUPABASE PROJECT CONFIGURATION
-========================================================= */
+  if (!window.supabase?.createClient) {
+    console.error(
+      "GARAGE: Supabase library did not load. Check the CDN script in index.html."
+    );
+    return;
+  }
 
-const GARAGE_SUPABASE_URL =
-  "https://ovooslmyfavrtlxazykq.supabase.co";
+  if (
+    !SUPABASE_URL.startsWith("https://") ||
+    SUPABASE_URL.includes("YOUR_SUPABASE")
+  ) {
+    console.error("GARAGE: Add your Supabase project URL in supabase-client.js.");
+    return;
+  }
 
-const GARAGE_SUPABASE_KEY =
-  "sb_publishable_XHfXBMkf6eng2p3gTLqC6g_A8aZB6dF";
+  if (
+    !SUPABASE_KEY ||
+    SUPABASE_KEY.includes("YOUR_SUPABASE")
+  ) {
+    console.error("GARAGE: Add your Supabase anon/publishable key in supabase-client.js.");
+    return;
+  }
 
+  try {
+    // Reuse the existing client if another script already created it.
+    if (!window.garageSupabase) {
+      window.garageSupabase = window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        }
+      );
+    }
 
-/* =========================================================
-   2. CHECK THAT THE SUPABASE LIBRARY LOADED
-========================================================= */
-
-if (!window.supabase?.createClient) {
-  console.error(
-    "GARAGE: Supabase library did not load. Check the Supabase CDN script in index.html."
-  );
-} else {
-
-
-  /* =======================================================
-     3. CREATE THE SHARED CLIENT
-  ======================================================= */
-
-  window.garageSupabase = window.supabase.createClient(
-    GARAGE_SUPABASE_URL,
-    GARAGE_SUPABASE_KEY
-  );
-
-  console.info("GARAGE: Supabase client initialized.");
-}
+    console.log("GARAGE: Supabase client initialized.");
+  } catch (error) {
+    console.error("GARAGE: Could not initialize Supabase:", error);
+  }
+})();
