@@ -1,49 +1,32 @@
+
 /* =========================================================
-   GARAGE — AUTHENTICATION
+   GARAGE — AUTHENTICATION UI
    ---------------------------------------------------------
    Responsibilities:
-   1. Connect to the shared Supabase client
-   2. Display the current account status
-   3. Show sign-in or logout controls
-   4. Handle logout
-   5. Keep the account display updated when auth changes
+   1. Display the current account status.
+   2. Show login or logout controls.
+   3. Handle logout.
+   4. Keep account controls updated after auth changes.
 
-   IMPORTANT:
-   - supabase-client.js must load before this file.
-   - This file does not create a second Supabase client.
-   - Public community posts are handled separately by script.js.
+   script.js handles the rest of the application UI.
+   Uses the shared Supabase client from supabase-client.js.
 ========================================================= */
 
 (() => {
   "use strict";
 
-  /* =======================================================
-     1. GET SHARED SUPABASE CLIENT
-  ======================================================= */
-
   const client = window.garageSupabase;
-
-  if (!window.supabase?.createClient) {
-    console.error(
-      "GARAGE AUTH: The Supabase library did not load. Check index.html."
-    );
-    return;
-  }
-
-  if (!client?.auth) {
-    console.error(
-      "GARAGE AUTH: Supabase client is missing. Check supabase-client.js."
-    );
-    return;
-  }
-
-  /* =======================================================
-     2. FIND ACCOUNT CONTROLS
-  ======================================================= */
 
   const authLink = document.getElementById("auth-link");
   const logoutBtn = document.getElementById("logout-btn");
   const accountStatus = document.getElementById("account-status");
+
+  if (!client?.auth) {
+    console.error(
+      "GARAGE AUTH: Shared Supabase client is unavailable."
+    );
+    return;
+  }
 
   if (!authLink || !logoutBtn || !accountStatus) {
     console.error(
@@ -52,9 +35,7 @@
     return;
   }
 
-  /* =======================================================
-     3. GET THE DISPLAY NAME
-  ======================================================= */
+  let logoutInProgress = false;
 
   function getAccountName(user) {
     return (
@@ -65,25 +46,19 @@
     );
   }
 
-  /* =======================================================
-     4. UPDATE ACCOUNT CONTROLS
-  ======================================================= */
-
   function updateAccount(session) {
     const user = session?.user || null;
 
     if (user) {
-      // Signed-in member.
-      accountStatus.textContent = `Logged in as ${getAccountName(user)}`;
+      accountStatus.textContent =
+        `Logged in as ${getAccountName(user)}`;
 
       authLink.hidden = true;
       logoutBtn.hidden = false;
-      logoutBtn.disabled = false;
+      logoutBtn.disabled = logoutInProgress;
 
-      // Expose the current authentication state to other UI code.
       document.documentElement.dataset.authState = "signed-in";
     } else {
-      // Guest visitor.
       accountStatus.textContent = "";
 
       authLink.hidden = false;
@@ -94,87 +69,52 @@
     }
   }
 
-  /* =======================================================
-     5. LOGOUT
-  ======================================================= */
-
   async function handleLogout() {
-    if (logoutBtn.disabled) return;
+    if (logoutInProgress) return;
 
+    logoutInProgress = true;
     logoutBtn.disabled = true;
     accountStatus.textContent = "Signing out...";
 
     try {
       const { error } = await client.auth.signOut();
 
-      if (error) {
-        console.error("GARAGE AUTH: Logout failed:", error.message);
+      if (error) throw error;
 
-        accountStatus.textContent = error.message;
-        logoutBtn.disabled = false;
-        return;
-      }
-
-      // Supabase's auth-state listener also updates the controls.
-      updateAccount(null);
-
-      // Stay on the current page. Public community posts should
-      // remain available to visitors who are logged out.
+      // The auth-state listener will update the account controls.
+      // script.js will handle the application's signed-out state.
     } catch (error) {
-      console.error("GARAGE AUTH: Unexpected logout error:", error);
+      console.error("GARAGE AUTH: Logout failed:", error);
 
-      accountStatus.textContent = "Could not sign out. Please try again.";
+      accountStatus.textContent =
+        error?.message || "Could not sign out. Please try again.";
+
+      logoutInProgress = false;
       logoutBtn.disabled = false;
     }
   }
 
   logoutBtn.addEventListener("click", handleLogout);
 
-  /* =======================================================
-     6. WATCH SIGN-IN AND SIGN-OUT EVENTS
-  ======================================================= */
-
+  // Register the listener before restoring the saved session.
   client.auth.onAuthStateChange((_event, session) => {
+    logoutInProgress = false;
     updateAccount(session);
   });
-
-  /* =======================================================
-     7. RESTORE EXISTING SESSION
-  ======================================================= */
 
   async function restoreSession() {
     try {
       const { data, error } = await client.auth.getSession();
 
-      if (error) {
-        console.error(
-          "GARAGE AUTH: Could not restore login:",
-          error.message
-        );
-
-        // Treat the page as a guest if the session cannot be restored.
-        updateAccount(null);
-        return;
-      }
+      if (error) throw error;
 
       updateAccount(data.session);
     } catch (error) {
-      console.error(
-        "GARAGE AUTH: Unexpected session error:",
-        error
-      );
-
+      console.error("GARAGE AUTH: Session restore failed:", error);
       updateAccount(null);
     }
   }
 
-  /* =======================================================
-     8. INITIALIZE
-  ======================================================= */
-
-  // Start with the guest controls visible until the session is checked.
   updateAccount(null);
-
-  // Restore the saved login, if one exists.
   restoreSession();
 })();
