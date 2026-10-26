@@ -1,25 +1,22 @@
-/* =========================================================
-   GARAGE — MAIN WEBSITE SCRIPT
-   ---------------------------------------------------------
-   Handles:
-   1. Authentication state and profile loading
-   2. Public community feed (visible to guests)
-   3. Creating posts and uploading media
-   4. Search, navigation, and feed interactions
-   5. Demo-only members, marketplace, comments, and messages
 
-   IMPORTANT:
-   - Public feed visibility is controlled by the Supabase query
-     AND your Supabase Row Level Security (RLS) policies.
-   - Likes, comments, follows, listings, and messages in this
-     version are local demo features; they are not saved to
-     Supabase.
+/* =========================================================
+   GARAGE — COMPLETE MAIN WEBSITE SCRIPT
+   ---------------------------------------------------------
+   Features:
+   1. Supabase authentication and profiles
+   2. Public community feed
+   3. Photo and video uploads
+   4. Private Supabase messaging
+   5. Registered-member selector and direct conversations
+   6. Message read status
+   7. Search, navigation, and media previews
+   8. Demo likes, comments, follows, and marketplace
 ========================================================= */
 
 "use strict";
 
 /* =========================================================
-   1. SHARED STATE AND ELEMENT HELPERS
+   1. SHARED STATE
 ========================================================= */
 
 const $ = (id) => document.getElementById(id);
@@ -31,9 +28,7 @@ const demoMembers = [
   { name: "Turbo Mike", car: "Subaru WRX", avatar: "T" }
 ];
 
-// These arrays/objects are intentionally temporary demo data.
 let listings = [];
-let messages = {};
 let followed = new Set();
 let localLikes = new Set();
 let localComments = {};
@@ -42,15 +37,19 @@ let toastTimer = null;
 let communityPosts = [];
 let currentUser = null;
 let currentProfile = null;
+
 let selectedMedia = null;
 let mediaPreviewUrl = "";
 let isPublishingPost = false;
+
+let activeConversationId = null;
+let messageBusy = false;
+let messageLoadNumber = 0;
 
 /* =========================================================
    2. GENERAL HELPERS
 ========================================================= */
 
-// Escape text before inserting it into HTML.
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
@@ -61,12 +60,11 @@ function escapeHTML(value) {
   })[character]);
 }
 
-// Display a small status message if the page has a toast element.
 function notify(message) {
   const toast = $("toast");
 
   if (!toast) {
-    console.log(`[GARAGE] ${message}`);
+    console.log("[GARAGE]", message);
     return;
   }
 
@@ -77,27 +75,19 @@ function notify(message) {
 
   toastTimer = window.setTimeout(() => {
     toast.classList.remove("show");
-  }, 2800);
+  }, 3500);
 }
 
-// Show a safe loading/error message in the community feed.
 function showStatus(message) {
   const feed = $("feed");
   if (!feed) return;
 
-  feed.innerHTML = `<p class="muted">${escapeHTML(message)}</p>`;
-}
+  feed.replaceChildren();
 
-function getDisplayName(profile, userId) {
-  return (
-    profile?.display_name ||
-    profile?.username ||
-    (userId ? `Member ${String(userId).slice(0, 6)}` : "Garage Member")
-  );
-}
-
-function getCurrentDisplayName() {
-  return getDisplayName(currentProfile, currentUser?.id);
+  const paragraph = document.createElement("p");
+  paragraph.className = "muted";
+  paragraph.textContent = message;
+  feed.appendChild(paragraph);
 }
 
 function formatDate(value) {
@@ -112,8 +102,16 @@ function formatDate(value) {
   });
 }
 
-function isVideoUrl(url) {
-  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || "");
+function getDisplayName(profile, userId) {
+  return (
+    profile?.display_name ||
+    profile?.username ||
+    (userId ? `Member ${String(userId).slice(0, 6)}` : "Garage Member")
+  );
+}
+
+function getCurrentDisplayName() {
+  return getDisplayName(currentProfile, currentUser?.id);
 }
 
 function makeInitials(name) {
@@ -127,31 +125,54 @@ function setButtonBusy(button, busy, busyText, idleText) {
   button.textContent = busy ? busyText : idleText;
 }
 
+function getFileExtension(file) {
+  const extensions = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov"
+  };
+
+  return extensions[file.type] || "";
+}
+
+function isVideoUrl(url) {
+  return /\.(mp4|webm|mov)(\?[^#]*)?(#.*)?$/i.test(url || "");
+}
+
+function makeUniqueId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 /* =========================================================
-   3. AUTHENTICATION AND CURRENT PROFILE
+   3. AUTHENTICATION AND PROFILE
 ========================================================= */
 
-// Use getSession() here. A visitor who is logged out is normal;
-// a missing session should not be reported as a login failure.
 async function loadCurrentUser() {
   currentUser = null;
   currentProfile = null;
 
   if (!client?.auth) {
-    console.error("GARAGE: Supabase client is not available.");
+    console.error("GARAGE: Supabase client is unavailable.");
     return null;
   }
 
   const { data, error } = await client.auth.getSession();
 
   if (error) {
-    console.error("GARAGE: Could not read the current session:", error.message);
+    console.error("GARAGE session error:", error.message);
     return null;
   }
 
   currentUser = data.session?.user || null;
 
-  // Guests are allowed to continue and read public community posts.
   if (!currentUser) return null;
 
   const { data: profile, error: profileError } = await client
@@ -161,45 +182,51 @@ async function loadCurrentUser() {
     .maybeSingle();
 
   if (profileError) {
-    console.error("GARAGE: Could not load the profile:", profileError.message);
+    console.error("GARAGE profile error:", profileError.message);
   }
 
   currentProfile = profile || null;
   return currentUser;
 }
 
-// Keep state updated if someone signs in or out while the page is open.
 function watchAuthenticationChanges() {
   if (!client?.auth) return;
 
   client.auth.onAuthStateChange((_event, session) => {
     currentUser = session?.user || null;
+    currentProfile = null;
 
     if (!currentUser) {
-      currentProfile = null;
-      // Do not clear the public feed when a user signs out.
       renderFeed();
+
+      if ($("messageTo")) {
+        loadMessageMembers();
+      }
+
       return;
     }
 
-    // Supabase recommends keeping auth-state callbacks lightweight.
-    // Load the profile after the callback completes.
+    const userId = currentUser.id;
+
     Promise.resolve().then(async () => {
-      const { data: profile, error } = await client
+      const { data, error } = await client
         .from("profiles")
         .select("id, username, display_name, bio, favorite_car, avatar_url")
-        .eq("id", currentUser.id)
+        .eq("id", userId)
         .maybeSingle();
 
       if (error) {
-        console.error("GARAGE: Could not refresh the profile:", error.message);
+        console.error("GARAGE profile refresh error:", error.message);
         return;
       }
 
-      // Ignore a stale profile response if the user changed meanwhile.
-      if (currentUser?.id === session?.user?.id) {
-        currentProfile = profile || null;
-        renderFeed();
+      if (currentUser?.id !== userId) return;
+
+      currentProfile = data || null;
+      renderFeed();
+
+      if ($("messageTo")) {
+        await loadMessageMembers();
       }
     });
   });
@@ -209,9 +236,6 @@ function watchAuthenticationChanges() {
    4. PUBLIC COMMUNITY FEED
 ========================================================= */
 
-// This query deliberately does NOT require a logged-in user.
-// Guests can read community posts when Supabase RLS permits public
-// SELECT access for rows where is_community = true.
 async function loadCommunityPosts() {
   const feed = $("feed");
   if (!feed) return;
@@ -223,47 +247,47 @@ async function loadCommunityPosts() {
 
   showStatus("Loading community posts...");
 
-  const { data, error } = await client
-    .from("posts")
-    .select("id, user_id, caption, image_url, created_at, is_community")
-    .eq("is_community", true)
-    .order("created_at", { ascending: false });
+  try {
+    const { data, error } = await client
+      .from("posts")
+      .select("id, user_id, caption, image_url, created_at, is_community")
+      .eq("is_community", true)
+      .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("GARAGE: Could not load public posts:", error.message);
-    showStatus(
-      "Could not load community posts. Check your Supabase connection and public-post permissions."
-    );
-    return;
-  }
+    if (error) throw error;
 
-  const posts = data || [];
-  const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
-  const profilesById = {};
+    const posts = data || [];
+    const userIds = [
+      ...new Set(posts.map((post) => post.user_id).filter(Boolean))
+    ];
 
-  // Author profiles are optional. A profile lookup failure should not
-  // prevent the public posts themselves from being displayed.
-  if (userIds.length) {
-    const { data: profiles, error: profilesError } = await client
-      .from("profiles")
-      .select("id, username, display_name, avatar_url, favorite_car")
-      .in("id", userIds);
+    const profilesById = {};
 
-    if (profilesError) {
-      console.warn("GARAGE: Could not load some post authors:", profilesError.message);
+    if (userIds.length) {
+      const { data: profiles, error: profileError } = await client
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, favorite_car")
+        .in("id", userIds);
+
+      if (profileError) {
+        console.warn("GARAGE author lookup:", profileError.message);
+      }
+
+      for (const profile of profiles || []) {
+        profilesById[profile.id] = profile;
+      }
     }
 
-    for (const profile of profiles || []) {
-      profilesById[profile.id] = profile;
-    }
+    communityPosts = posts.map((post) => ({
+      ...post,
+      authorProfile: profilesById[post.user_id] || null
+    }));
+
+    renderFeed();
+  } catch (error) {
+    console.error("GARAGE community feed error:", error);
+    showStatus("Could not load community posts: " + error.message);
   }
-
-  communityPosts = posts.map((post) => ({
-    ...post,
-    authorProfile: profilesById[post.user_id] || null
-  }));
-
-  renderFeed();
 }
 
 function renderPostMedia(mediaUrl) {
@@ -276,6 +300,7 @@ function renderPostMedia(mediaUrl) {
       <video
         class="post-media"
         controls
+        playsinline
         preload="metadata"
         src="${safeUrl}"
       ></video>
@@ -300,9 +325,11 @@ function renderFeed() {
 
   const visiblePosts = communityPosts.filter((post) => {
     const profile = post.authorProfile;
+
     const searchableText = [
       getDisplayName(profile, post.user_id),
       profile?.favorite_car || "",
+      profile?.username || "",
       post.caption || ""
     ].join(" ").toLowerCase();
 
@@ -322,20 +349,13 @@ function renderFeed() {
     const profile = post.authorProfile;
     const name = getDisplayName(profile, post.user_id);
     const avatarUrl = profile?.avatar_url || "";
-    const isOwnPost = Boolean(currentUser && currentUser.id === post.user_id);
     const liked = localLikes.has(post.id);
     const comments = localComments[post.id] || [];
 
     const avatarMarkup = avatarUrl
-      ? `
-        <img
-          class="avatar"
-          src="${escapeHTML(avatarUrl)}"
-          alt="${escapeHTML(name)}'s avatar"
-          loading="lazy"
-          style="object-fit:cover;"
-        >
-      `
+      ? `<img class="avatar" src="${escapeHTML(avatarUrl)}"
+           alt="${escapeHTML(name)}'s avatar"
+           loading="lazy" style="object-fit:cover;">`
       : `<div class="avatar" aria-hidden="true">${makeInitials(name)}</div>`;
 
     const captionMarkup = post.caption
@@ -366,33 +386,23 @@ function renderFeed() {
         ${renderPostMedia(post.image_url)}
 
         <div class="post-actions">
-          <button
-            class="action ${liked ? "liked" : ""}"
-            type="button"
-            data-like="${escapeHTML(post.id)}"
-            aria-pressed="${liked ? "true" : "false"}"
-          >${liked ? "♥ Liked" : "♡ Like"}</button>
+          <button class="action ${liked ? "liked" : ""}"
+            type="button" data-like="${escapeHTML(post.id)}"
+            aria-pressed="${liked ? "true" : "false"}">
+            ${liked ? "♥ Liked" : "♡ Like"}
+          </button>
 
-          <button
-            class="action"
-            type="button"
-            data-focus-comment="${escapeHTML(post.id)}"
-          >Comments · ${comments.length}</button>
-
-          ${isOwnPost ? `<span class="muted">Your post</span>` : ""}
+          <button class="action" type="button"
+            data-focus-comment="${escapeHTML(post.id)}">
+            Comments · ${comments.length}
+          </button>
         </div>
 
         <div class="comment-list">${commentsMarkup}</div>
 
         <form class="comment-form" data-comment="${escapeHTML(post.id)}">
-          <input
-            name="comment"
-            type="text"
-            placeholder="Write a comment..."
-            maxlength="1000"
-            aria-label="Write a comment"
-            required
-          >
+          <input name="comment" type="text" maxlength="1000"
+            placeholder="Write a comment..." aria-label="Write a comment" required>
           <button class="action" type="submit">Send</button>
         </form>
       </article>
@@ -401,7 +411,7 @@ function renderFeed() {
 }
 
 /* =========================================================
-   5. POST IMAGE / VIDEO PICKER AND PREVIEW
+   5. PHOTO AND VIDEO PICKER
 ========================================================= */
 
 function clearMediaPreview({ clearInput = true } = {}) {
@@ -421,7 +431,7 @@ function clearMediaPreview({ clearInput = true } = {}) {
   }
 
   if ($("mediaPreview")) {
-    $("mediaPreview").innerHTML = "";
+    $("mediaPreview").replaceChildren();
   }
 }
 
@@ -430,25 +440,25 @@ function setupMediaPicker() {
   if (!input) return;
 
   input.addEventListener("change", (event) => {
-    // Save the file BEFORE clearing the old preview. Clearing the input
-    // first would also clear the newly selected file in some browsers.
     const file = event.target.files?.[0] || null;
 
     clearMediaPreview({ clearInput: false });
 
     if (!file) return;
 
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+    const extension = getFileExtension(file);
+
+    if (!extension) {
       input.value = "";
-      notify("Choose an image or video file.");
+      notify("Use JPG, PNG, WebP, GIF, MP4, WebM, or MOV.");
       return;
     }
 
-    const maxFileSize = 8 * 1024 * 1024;
+    const maxSize = 8 * 1024 * 1024;
 
-    if (file.size > maxFileSize) {
+    if (file.size > maxSize) {
       input.value = "";
-      notify("Choose a photo or video under 8 MB.");
+      notify("Choose a photo or video no larger than 8 MB.");
       return;
     }
 
@@ -459,18 +469,31 @@ function setupMediaPicker() {
       $("fileName").textContent = file.name;
     }
 
-    if ($("mediaPreview")) {
-      const safePreviewUrl = escapeHTML(mediaPreviewUrl);
+    const preview = $("mediaPreview");
+    if (!preview) return;
 
-      $("mediaPreview").innerHTML = file.type.startsWith("video/")
-        ? `<video class="post-media" controls preload="metadata" src="${safePreviewUrl}"></video>`
-        : `<img class="post-media" src="${safePreviewUrl}" alt="Selected media preview">`;
+    preview.replaceChildren();
+
+    let element;
+
+    if (file.type.startsWith("video/")) {
+      element = document.createElement("video");
+      element.controls = true;
+      element.playsInline = true;
+      element.preload = "metadata";
+    } else {
+      element = document.createElement("img");
+      element.alt = "Selected media preview";
     }
+
+    element.className = "post-media";
+    element.src = mediaPreviewUrl;
+    preview.appendChild(element);
   });
 }
 
 /* =========================================================
-   6. CREATE A PUBLIC COMMUNITY POST
+   6. PUBLISH PUBLIC COMMUNITY POSTS
 ========================================================= */
 
 async function publishPost(event) {
@@ -483,18 +506,17 @@ async function publishPost(event) {
     return;
   }
 
-  const text = $("postText")?.value.trim() || "";
+  const caption = $("postText")?.value.trim() || "";
 
-  if (!text && !selectedMedia) {
-    notify("Write something or choose a photo/video.");
+  if (!caption && !selectedMedia) {
+    notify("Write something or choose a photo or video.");
     return;
   }
 
-  // Use getSession so a logged-out visitor is handled as a normal guest.
-  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  const { data: sessionData, error: sessionError } =
+    await client.auth.getSession();
 
   if (sessionError) {
-    console.error("GARAGE: Could not check the current session:", sessionError.message);
     notify("Could not check your login. Please try again.");
     return;
   }
@@ -518,52 +540,40 @@ async function publishPost(event) {
   try {
     let mediaUrl = null;
 
-    // Upload selected media to the public post-images bucket.
     if (selectedMedia) {
-      const extensionFromName = selectedMedia.name.includes(".")
-        ? selectedMedia.name.split(".").pop().toLowerCase()
-        : "";
+      const extension = getFileExtension(selectedMedia);
 
-      const extension = /^[a-z0-9]{1,8}$/.test(extensionFromName)
-        ? extensionFromName
-        : "bin";
+      if (!extension) {
+        throw new Error("Unsupported media type.");
+      }
 
-      const uniqueId = (
-        window.crypto?.randomUUID
-          ? window.crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-      );
+      uploadedPath = `${user.id}/${makeUniqueId()}.${extension}`;
 
-      uploadedPath = `${user.id}/${uniqueId}.${extension}`;
-
-      const { error: uploadError } = await client
-        .storage
+      const { error: uploadError } = await client.storage
         .from("post-images")
         .upload(uploadedPath, selectedMedia, {
-          contentType: selectedMedia.type || "application/octet-stream",
+          contentType: selectedMedia.type,
           upsert: false
         });
 
       if (uploadError) throw uploadError;
 
-      const { data: publicData } = client
-        .storage
+      const { data: publicData } = client.storage
         .from("post-images")
         .getPublicUrl(uploadedPath);
 
       mediaUrl = publicData?.publicUrl || null;
 
       if (!mediaUrl) {
-        throw new Error("The uploaded media URL could not be created.");
+        throw new Error("Could not create the media URL.");
       }
     }
 
-    // is_community=true makes this a public community post.
     const { error: insertError } = await client
       .from("posts")
       .insert({
         user_id: user.id,
-        caption: text,
+        caption,
         image_url: mediaUrl,
         is_community: true
       });
@@ -571,34 +581,33 @@ async function publishPost(event) {
     if (insertError) throw insertError;
 
     if ($("postText")) $("postText").value = "";
+
     clearMediaPreview();
 
     await loadCommunityPosts();
     notify("Your post was published!");
   } catch (error) {
-    console.error("GARAGE: Post publishing failed:", error);
+    console.error("GARAGE publish error:", error);
 
-    // Remove the uploaded file if saving the database row failed.
     if (uploadedPath) {
-      const { error: cleanupError } = await client
-        .storage
+      const { error: cleanupError } = await client.storage
         .from("post-images")
         .remove([uploadedPath]);
 
       if (cleanupError) {
-        console.error("GARAGE: Uploaded file cleanup failed:", cleanupError.message);
+        console.warn("GARAGE upload cleanup error:", cleanupError.message);
       }
     }
 
-    notify(error?.message || "Could not publish your post.");
+    notify("Could not publish: " + (error.message || "Unknown error."));
   } finally {
     isPublishingPost = false;
     setButtonBusy(submitButton, false, "Publishing...", "Publish post ↗");
   }
 }
+
 /* =========================================================
-   7. DEMO MEMBERS AND FOLLOW BUTTONS
-   These actions are temporary and are not saved to Supabase.
+   7. DEMO MEMBERS AND FOLLOWS
 ========================================================= */
 
 function renderMembers() {
@@ -611,18 +620,15 @@ function renderMembers() {
     return `
       <div class="member">
         <div class="avatar" aria-hidden="true">${escapeHTML(member.avatar)}</div>
-
         <div class="member-name">
           <strong>${escapeHTML(member.name)}</strong>
           <small>${escapeHTML(member.car)}</small>
         </div>
-
-        <button
-          class="action ${isFollowing ? "following" : ""}"
-          type="button"
-          data-follow="${escapeHTML(member.name)}"
-          aria-pressed="${isFollowing ? "true" : "false"}"
-        >${isFollowing ? "Following" : "Follow"}</button>
+        <button class="action ${isFollowing ? "following" : ""}"
+          type="button" data-follow="${escapeHTML(member.name)}"
+          aria-pressed="${isFollowing ? "true" : "false"}">
+          ${isFollowing ? "Following" : "Follow"}
+        </button>
       </div>
     `;
   }).join("");
@@ -645,13 +651,14 @@ function setupMemberInteractions() {
     }
 
     renderMembers();
-    notify(followed.has(name) ? `Following ${name} locally.` : `Unfollowed ${name} locally.`);
+    notify(followed.has(name)
+      ? `Following ${name} locally.`
+      : `Unfollowed ${name} locally.`);
   });
 }
 
 /* =========================================================
    8. DEMO MARKETPLACE
-   Listings are temporary and disappear when the page reloads.
 ========================================================= */
 
 function renderListings() {
@@ -659,7 +666,8 @@ function renderListings() {
   if (!container) return;
 
   if (!listings.length) {
-    container.innerHTML = `<p class="muted">No demo listings yet. Add a listing to try this feature.</p>`;
+    container.innerHTML =
+      '<p class="muted">No demo listings yet. Add a listing to try this feature.</p>';
     return;
   }
 
@@ -695,9 +703,9 @@ function setupListingForm() {
     notify("Demo listing added. It is not saved to Supabase.");
   });
 }
+
 /* =========================================================
    9. DEMO LIKES AND COMMENTS
-   These actions are temporary and are not saved to Supabase.
 ========================================================= */
 
 function setupFeedInteractions() {
@@ -742,7 +750,9 @@ function setupFeedInteractions() {
 
     const postId = form.dataset.comment;
 
-    if (!localComments[postId]) localComments[postId] = [];
+    if (!localComments[postId]) {
+      localComments[postId] = [];
+    }
 
     localComments[postId].push({
       author: getCurrentDisplayName(),
@@ -755,17 +765,8 @@ function setupFeedInteractions() {
 }
 
 /* =========================================================
-   10. DEMO MESSAGES
-   Messages are temporary and are not saved to Supabase.
+   10. SUPABASE PRIVATE MESSAGING
 ========================================================= */
-
-
-/* =========================================================
-   10. SUPABASE PRIVATE MESSAGES
-========================================================= */
-
-let activeConversationId = null;
-let messageBusy = false;
 
 async function getSignedInUser() {
   if (!client?.auth) return null;
@@ -773,121 +774,254 @@ async function getSignedInUser() {
   const { data, error } = await client.auth.getUser();
 
   if (error) {
-    console.error("GARAGE auth error:", error.message);
+    console.error("GARAGE messaging authentication error:", error.message);
     return null;
   }
 
   return data.user || null;
 }
 
+function showConversationMessage(text, isError = false) {
+  const conversation = $("conversation");
+  if (!conversation) return;
+
+  conversation.replaceChildren();
+
+  const paragraph = document.createElement("p");
+  paragraph.className = "muted";
+  paragraph.textContent = text;
+
+  if (isError) paragraph.style.color = "#ff7777";
+
+  conversation.appendChild(paragraph);
+}
+
+function memberLabel(profile) {
+  return (
+    profile.display_name ||
+    profile.username ||
+    `Member ${String(profile.id).slice(0, 6)}`
+  );
+}
+
+async function loadMessageMembers() {
+  const select = $("messageTo");
+  if (!select || !client) return;
+
+  const previousValue = select.value;
+  select.disabled = true;
+  select.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Loading members...";
+  select.appendChild(placeholder);
+
+  try {
+    const user = await getSignedInUser();
+
+    if (!user) {
+      placeholder.textContent = "Sign in to message members";
+      showConversationMessage("Please sign in to use private messages.");
+      return;
+    }
+
+    const { data, error } = await client
+      .from("profiles")
+      .select("id, username, display_name")
+      .neq("id", user.id)
+      .order("username", { ascending: true });
+
+    if (error) throw error;
+
+    select.replaceChildren();
+
+    const first = document.createElement("option");
+    first.value = "";
+    first.textContent = data?.length
+      ? "Choose a member..."
+      : "No other members found";
+
+    select.appendChild(first);
+
+    for (const profile of data || []) {
+      const option = document.createElement("option");
+      option.value = profile.id;
+      option.textContent = memberLabel(profile);
+      select.appendChild(option);
+    }
+
+    select.disabled = !(data && data.length);
+
+    const url = new URL(window.location.href);
+    const requestedRecipient = url.searchParams.get("to");
+    const desiredValue = requestedRecipient || previousValue;
+
+    const validRecipient = [...select.options].some(
+      (option) => option.value === desiredValue
+    );
+
+    if (validRecipient && desiredValue) {
+      select.value = desiredValue;
+      await loadConversation();
+    } else {
+      activeConversationId = null;
+      showConversationMessage("Choose a member to open a conversation.");
+    }
+  } catch (error) {
+    console.error("GARAGE member list error:", error);
+
+    select.replaceChildren();
+
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Could not load members";
+    select.appendChild(option);
+
+    showConversationMessage("Could not load members: " + error.message, true);
+  }
+}
+
 async function loadConversation() {
   const conversation = $("conversation");
-  const recipientInput = $("messageTo");
+  const recipientSelect = $("messageTo");
 
-  if (!conversation || !recipientInput) return;
+  if (!conversation || !recipientSelect) return;
 
   const user = await getSignedInUser();
 
   if (!user) {
-    conversation.innerHTML =
-      '<p class="muted">Sign in to use private messages.</p>';
+    showConversationMessage("Please sign in to use private messages.");
     return;
   }
 
-  const recipientId = recipientInput.value.trim();
+  const recipientId = recipientSelect.value;
 
   if (!recipientId) {
-    conversation.innerHTML =
-      '<p class="muted">Choose a member to open a conversation.</p>';
+    activeConversationId = null;
+    showConversationMessage("Choose a member to open a conversation.");
     return;
   }
 
   if (recipientId === user.id) {
-    conversation.innerHTML =
-      '<p class="muted">You cannot message yourself.</p>';
+    showConversationMessage("You cannot message yourself.", true);
     return;
   }
 
   activeConversationId = recipientId;
-  conversation.innerHTML =
-    '<p class="muted">Loading conversation...</p>';
+  const thisLoad = ++messageLoadNumber;
 
-  const { data, error } = await client
-    .from("messages")
-    .select("id, sender_id, recipient_id, content, created_at, read_at")
-    .or(
-      `and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),` +
-      `and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`
-    )
-    .order("created_at", { ascending: true });
+  showConversationMessage("Loading conversation...");
 
-  if (error) {
-    console.error("GARAGE message load error:", error.message);
-    conversation.innerHTML =
-      '<p class="muted">Could not load messages. Check your database policies.</p>';
-    return;
-  }
-
-  if (activeConversationId !== recipientId) return;
-
-  const messages = data || [];
-
-  conversation.innerHTML = messages.length
-    ? messages.map(message => `
-        <article class="message ${
-          message.sender_id === user.id ? "message-own" : "message-incoming"
-        }">
-          <p>${escapeHTML(message.content).replace(/\n/g, "<br>")}</p>
-          <small class="muted">
-            ${message.sender_id === user.id ? "You" : "Member"}
-            · ${escapeHTML(formatDate(message.created_at))}
-            ${message.sender_id === user.id && message.read_at ? " · Read" : ""}
-          </small>
-        </article>
-      `).join("")
-    : '<p class="muted">No messages yet. Say hello!</p>';
-
-  // Mark messages received from this member as read.
-  const unreadIds = messages
-    .filter(message =>
-      message.recipient_id === user.id && !message.read_at
-    )
-    .map(message => message.id);
-
-  if (unreadIds.length) {
-    const { error: readError } = await client
+  try {
+    const { data, error } = await client
       .from("messages")
-      .update({ read_at: new Date().toISOString() })
-      .in("id", unreadIds);
+      .select("id, sender_id, recipient_id, content, created_at, read_at")
+      .or(
+        `and(sender_id.eq.${user.id},recipient_id.eq.${recipientId}),` +
+        `and(sender_id.eq.${recipientId},recipient_id.eq.${user.id})`
+      )
+      .order("created_at", { ascending: true });
 
-    if (readError) {
-      console.warn("GARAGE read-status update:", readError.message);
+    if (error) throw error;
+
+    if (
+      thisLoad !== messageLoadNumber ||
+      activeConversationId !== recipientId
+    ) {
+      return;
+    }
+
+    const messages = data || [];
+    conversation.replaceChildren();
+
+    if (!messages.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "No messages yet. Say hello!";
+      conversation.appendChild(empty);
+    }
+
+    for (const message of messages) {
+      const article = document.createElement("article");
+
+      article.className = "message " +
+        (message.sender_id === user.id
+          ? "message-own"
+          : "message-incoming");
+
+      const body = document.createElement("p");
+      body.textContent = message.content || "";
+
+      const meta = document.createElement("small");
+      meta.className = "muted";
+
+      const senderLabel = message.sender_id === user.id ? "You" : "Member";
+      const readLabel =
+        message.sender_id === user.id && message.read_at ? " · Read" : "";
+
+      meta.textContent =
+        `${senderLabel} · ${formatDate(message.created_at)}${readLabel}`;
+
+      article.append(body, meta);
+      conversation.appendChild(article);
+    }
+
+    conversation.scrollTop = conversation.scrollHeight;
+
+    const unreadIds = messages
+      .filter((message) =>
+        message.recipient_id === user.id && !message.read_at
+      )
+      .map((message) => message.id);
+
+    if (unreadIds.length) {
+      const { error: readError } = await client
+        .from("messages")
+        .update({ read_at: new Date().toISOString() })
+        .in("id", unreadIds)
+        .eq("recipient_id", user.id);
+
+      if (readError) {
+        console.warn("GARAGE read status error:", readError.message);
+      }
+    }
+  } catch (error) {
+    console.error("GARAGE conversation error:", error);
+
+    if (thisLoad === messageLoadNumber) {
+      showConversationMessage(
+        "Could not load messages: " + error.message,
+        true
+      );
     }
   }
-
-  conversation.scrollTop = conversation.scrollHeight;
 }
 
 function setupMessages() {
-  $("messageTo")?.addEventListener("change", loadConversation);
+  const recipientSelect = $("messageTo");
+  const form = $("messageForm");
 
-  $("messageForm")?.addEventListener("submit", async event => {
+  recipientSelect?.addEventListener("change", loadConversation);
+
+  form?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     if (messageBusy) return;
 
     const user = await getSignedInUser();
+
     if (!user) {
       notify("Please sign in to send private messages.");
       window.location.href = "auth.html";
       return;
     }
 
-    const recipientId = $("messageTo")?.value.trim() || "";
+    const recipientId = recipientSelect?.value || "";
     const content = $("messageText")?.value.trim() || "";
 
-    if (!recipientId || !content) {
-      notify("Choose a recipient and enter a message.");
+    if (!recipientId) {
+      notify("Choose a member first.");
       return;
     }
 
@@ -896,23 +1030,29 @@ function setupMessages() {
       return;
     }
 
-    if (content.length > 5000) {
-      notify("Messages must be 5,000 characters or less.");
+    if (!content) {
+      notify("Write a message first.");
       return;
     }
 
-    messageBusy = true;
-    const submitButton = $("messageForm")
-      ?.querySelector('button[type="submit"]');
+    if (content.length > 5000) {
+      notify("Messages must be 5,000 characters or fewer.");
+      return;
+    }
 
+    const submitButton = form.querySelector('button[type="submit"]');
+
+    messageBusy = true;
     if (submitButton) submitButton.disabled = true;
 
     try {
-      const { error } = await client.from("messages").insert({
-        sender_id: user.id,
-        recipient_id: recipientId,
-        content
-      });
+      const { error } = await client
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          recipient_id: recipientId,
+          content
+        });
 
       if (error) throw error;
 
@@ -920,17 +1060,21 @@ function setupMessages() {
       await loadConversation();
       notify("Message sent.");
     } catch (error) {
-      console.error("GARAGE send message error:", error.message);
-      notify(error.message || "Could not send the message.");
+      console.error("GARAGE message send error:", error);
+      notify("Could not send message: " + error.message);
     } finally {
       messageBusy = false;
       if (submitButton) submitButton.disabled = false;
     }
   });
+
+  if (recipientSelect && form) {
+    loadMessageMembers();
+  }
 }
 
 /* =========================================================
-   11. HOMEPAGE NAVIGATION AND SEARCH
+   11. NAVIGATION AND SEARCH
 ========================================================= */
 
 function showPage(pageName) {
@@ -956,6 +1100,10 @@ function showPage(pageName) {
       button.removeAttribute("aria-current");
     }
   });
+
+  if (pageName === "messages" && $("messageTo")) {
+    loadMessageMembers();
+  }
 }
 
 function setupNavigation() {
@@ -964,7 +1112,6 @@ function setupNavigation() {
       const pageName = button.dataset.page;
       if (!pageName) return;
 
-      // The members area is a separate page in this website.
       if (pageName === "members") {
         window.location.href = "members.html";
         return;
@@ -974,8 +1121,6 @@ function setupNavigation() {
     });
   });
 
-  // The main page's inline authentication code may also handle this
-  // button. This listener only handles the normal in-page navigation.
   $("shareBtn")?.addEventListener("click", () => {
     showPage("feed");
 
@@ -1011,7 +1156,6 @@ async function init() {
 
   renderMembers();
   renderListings();
-  renderMessages();
 
   if (!client) {
     console.error("GARAGE: Supabase client not found. Check supabase-client.js.");
@@ -1019,14 +1163,16 @@ async function init() {
     return;
   }
 
-  // Subscribe before loading the initial session so later sign-in/sign-out
-  // events keep the page state in sync.
   watchAuthenticationChanges();
-
   await loadCurrentUser();
-
-  // Always load the public feed, whether the visitor is signed in or not.
   await loadCommunityPosts();
+
+  // Support direct links such as index.html?page=messages&to=UUID.
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get("page") === "messages") {
+    showPage("messages");
+  }
 }
 
 if (document.readyState === "loading") {
