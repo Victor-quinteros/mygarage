@@ -2,6 +2,9 @@
 (() => {
   "use strict";
 
+  // =========================================================
+  // 1. Supabase and HTML elements
+  // =========================================================
   const client = window.garageSupabase;
 
   const form = document.getElementById("post-form");
@@ -14,23 +17,88 @@
   if (!client) {
     if (status) {
       status.textContent =
-        "Supabase did not load. Check supabase-client.js and index.html.";
+        "Supabase did not load. Check supabase-client.js and the script order.";
     }
+    console.error("GARAGE Feed: window.garageSupabase is unavailable.");
     return;
   }
 
-  if (!form || !captionInput || !publishButton || !feedList) {
-    console.error("My Feed: Required HTML elements were not found.");
+  if (
+    !form ||
+    !captionInput ||
+    !imageInput ||
+    !publishButton ||
+    !feedList
+  ) {
+    console.error("GARAGE Feed: Required HTML elements were not found.");
     return;
   }
+
+  // =========================================================
+  // 2. Configuration
+  // =========================================================
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+  const MAX_VIDEO_SIZE = 5 * 1024 * 1024;
+  const MAX_CAPTION_LENGTH = 2000;
+  const STORAGE_BUCKET = "post-images";
+
+  const ALLOWED_IMAGE_TYPES = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif"
+  ];
+
+  const ALLOWED_VIDEO_TYPES = [
+    "video/mp4",
+    "video/webm",
+    "video/quicktime"
+  ];
+
+  const EXTENSION_BY_TYPE = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov"
+  };
 
   let currentUser = null;
   let isPublishing = false;
+  let isLoading = false;
+  let loadRequestNumber = 0;
 
+  // =========================================================
+  // 3. Status and error handling
+  // =========================================================
   function showStatus(message, isError = false) {
     if (!status) return;
+
     status.textContent = message;
     status.style.color = isError ? "#ff7777" : "";
+  }
+
+  function explainError(error) {
+    const message = error?.message || "An unexpected error occurred.";
+
+    if (/row-level security|permission denied/i.test(message)) {
+      return (
+        "Supabase denied this action. Check your posts table policies " +
+        "and the post-images storage bucket policies."
+      );
+    }
+
+    if (/duplicate key/i.test(message)) {
+      return "This post conflicts with an existing database record.";
+    }
+
+    if (/failed to fetch|network/i.test(message)) {
+      return "Network error. Check your internet connection and try again.";
+    }
+
+    return message;
   }
 
   function escapeHtml(value) {
@@ -45,164 +113,257 @@
 
   function formatDate(value) {
     if (!value) return "";
+
     const date = new Date(value);
+
     if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString();
+
+    return date.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
   }
 
-  function getFileExtension(file) {
-    const nameExtension = file.name.includes(".")
-      ? file.name.split(".").pop().toLowerCase()
-      : "";
-
-    const allowed = [
-      "jpg", "jpeg", "png", "gif", "webp",
-      "mp4", "webm", "mov"
-    ];
-
-    if (allowed.includes(nameExtension)) return nameExtension;
-
-    const mimeMap = {
-      "image/jpeg": "jpg",
-      "image/png": "png",
-      "image/gif": "gif",
-      "image/webp": "webp",
-      "video/mp4": "mp4",
-      "video/webm": "webm",
-      "video/quicktime": "mov"
-    };
-
-    return mimeMap[file.type] || "";
-  }
-
-  async function uploadMedia(file) {
+  // =========================================================
+  // 4. File validation
+  // =========================================================
+  function validateMediaFile(file) {
     if (!file) return null;
 
-    const maxSize = 8 * 1024 * 1024;
+    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+    const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
 
-    if (file.size > maxSize) {
-      throw new Error("Choose a file smaller than 8 MB.");
-    }
-
-    const extension = getFileExtension(file);
-
-    if (!extension) {
+    if (!isImage && !isVideo) {
       throw new Error(
-        "Unsupported file. Use JPG, PNG, GIF, WebP, MP4, WebM, or MOV."
+        "Unsupported file. Choose JPG, PNG, WebP, GIF" +
+        " or an enabled video format."
       );
     }
 
-    const path =
-      `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
 
-    const { error: uploadError } = await client.storage
-      .from("post-images")
-      .upload(path, file, {
-        upsert: false,
-        contentType: file.type || undefined
-      });
-
-    if (uploadError) throw uploadError;
-
-    const { data } = client.storage
-      .from("post-images")
-      .getPublicUrl(path);
-
-    return data.publicUrl;
-  }
-
-  function renderPosts(posts) {
-    if (!posts.length) {
-      feedList.innerHTML =
-        '<p class="feed-empty">You have no personal posts yet. Create one above.</p>';
-      return;
+    if (file.size > maxSize) {
+      throw new Error(
+        `File is too large. Maximum size is ${Math.round(maxSize / 1024 / 1024)} MB.`
+      );
     }
 
-    feedList.innerHTML = posts.map((post) => {
-      const caption = escapeHtml(post.caption);
-      const date = escapeHtml(formatDate(post.created_at));
-      const mediaUrl = post.image_url
-        ? escapeHtml(post.image_url)
-        : "";
+    if (file.size === 0) {
+      throw new Error("The selected file is empty.");
+    }
 
-      let media = "";
-
-      if (mediaUrl) {
-        const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(mediaUrl);
-
-        media = isVideo
-          ? `<video class="post-media" controls preload="metadata"
-               src="${mediaUrl}"></video>`
-          : `<img class="post-media" loading="lazy"
-               src="${mediaUrl}" alt="Post media">`;
-      }
-
-      return `
-        <article class="post" data-post-id="${escapeHtml(post.id)}">
-          <div class="post-header">
-            <strong>My personal post</strong>
-            <time>${date}</time>
-          </div>
-          ${caption ? `<p>${caption}</p>` : ""}
-          ${media}
-        </article>
-      `;
-    }).join("");
+    return {
+      extension: EXTENSION_BY_TYPE[file.type],
+      contentType: file.type,
+      isVideo
+    };
   }
 
-  
-async function loadPersonalPosts() {
-  if (!currentUser) return;
+  // =========================================================
+  // 5. Upload media to Supabase Storage
+  // =========================================================
+  async function uploadMedia(file) {
+    if (!file) return null;
 
-  showStatus("Loading your personal posts…");
+    const details = validateMediaFile(file);
+    const path =
+      `${currentUser.id}/${crypto.randomUUID()}.${details.extension}`;
 
-  try {
-    const query = client
-      .from("posts")
-      .select("id, user_id, caption, image_url, created_at, is_community")
-      .eq("user_id", currentUser.id)
-      .eq("is_community", false)
-      .order("created_at", { ascending: false });
-
-    const timeout = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(
-          "Supabase took too long to respond. Check your connection and Supabase project status."
-        ));
-      }, 15000);
-    });
-
-    const { data, error } = await Promise.race([query, timeout]);
+    const { error } = await client.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, {
+        upsert: false,
+        contentType: details.contentType
+      });
 
     if (error) throw error;
 
-    renderPosts(data || []);
-    showStatus("");
-  } catch (error) {
-    console.error("My Feed load error:", error);
-    showStatus("Could not load your posts: " + error.message, true);
+    const { data } = client.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(path);
+
+    if (!data?.publicUrl) {
+      throw new Error("The uploaded file URL could not be created.");
+    }
+
+    return {
+      url: data.publicUrl,
+      path
+    };
   }
-}
 
+  async function removeUploadedMedia(path) {
+    if (!path) return;
 
+    try {
+      const { error } = await client.storage
+        .from(STORAGE_BUCKET)
+        .remove([path]);
+
+      if (error) {
+        console.error("Could not clean up uploaded media:", error);
+      }
+    } catch (error) {
+      console.error("Media cleanup failed:", error);
+    }
+  }
+
+  // =========================================================
+  // 6. Render personal posts
+  // =========================================================
+  function renderPosts(posts) {
+    feedList.replaceChildren();
+
+    if (!posts.length) {
+      const empty = document.createElement("p");
+      empty.className = "feed-empty";
+      empty.textContent =
+        "You have no personal posts yet. Create one above.";
+
+      feedList.appendChild(empty);
+      return;
+    }
+
+    posts.forEach((post) => {
+      const article = document.createElement("article");
+      article.className = "feed-post";
+      article.dataset.postId = post.id;
+
+      const header = document.createElement("div");
+      header.className = "feed-post-header";
+
+      const author = document.createElement("strong");
+      author.className = "feed-post-author";
+      author.textContent = "My personal post";
+
+      const time = document.createElement("time");
+      time.className = "feed-post-date";
+
+      if (post.created_at) {
+        time.dateTime = post.created_at;
+        time.textContent = formatDate(post.created_at);
+      }
+
+      header.append(author, time);
+      article.appendChild(header);
+
+      if (post.caption) {
+        const caption = document.createElement("p");
+        caption.className = "feed-post-caption";
+        caption.textContent = post.caption;
+        article.appendChild(caption);
+      }
+
+      if (post.image_url) {
+        const isVideo = /\.(mp4|webm|mov)(?:[?#].*)?$/i.test(
+          post.image_url
+        );
+
+        if (isVideo) {
+          const video = document.createElement("video");
+          video.className = "feed-post-image";
+          video.controls = true;
+          video.preload = "metadata";
+          video.src = post.image_url;
+          video.setAttribute("aria-label", "Post video");
+          article.appendChild(video);
+        } else {
+          const image = document.createElement("img");
+          image.className = "feed-post-image";
+          image.loading = "lazy";
+          image.src = post.image_url;
+          image.alt = "Photo attached to post";
+          article.appendChild(image);
+        }
+      }
+
+      feedList.appendChild(article);
+    });
+  }
+
+  // =========================================================
+  // 7. Load the signed-in user's personal posts
+  // =========================================================
+  async function loadPersonalPosts() {
+    if (!currentUser) {
+      feedList.replaceChildren();
+
+      const empty = document.createElement("p");
+      empty.className = "feed-empty";
+      empty.textContent = "Please sign in to view your personal posts.";
+
+      feedList.appendChild(empty);
+      return;
+    }
+
+    if (isLoading) return;
+
+    isLoading = true;
+    const requestNumber = ++loadRequestNumber;
+
+    showStatus("Loading your personal posts...");
+
+    try {
+      const { data, error } = await client
+        .from("posts")
+        .select("id, user_id, caption, image_url, created_at, is_community")
+        .eq("user_id", currentUser.id)
+        .eq("is_community", false)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      if (requestNumber !== loadRequestNumber) return;
+
+      renderPosts(data || []);
+      showStatus("");
+    } catch (error) {
+      console.error("GARAGE Feed loading failed:", error);
+
+      if (requestNumber === loadRequestNumber) {
+        showStatus(
+          "Could not load your posts: " + explainError(error),
+          true
+        );
+      }
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  // =========================================================
+  // 8. Publish a personal post
+  // =========================================================
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     if (isPublishing) return;
 
     const caption = captionInput.value.trim();
-    const file = imageInput?.files?.[0] || null;
+    const file = imageInput.files?.[0] || null;
 
     if (!caption && !file) {
-      showStatus("Write something or choose a photo/video.", true);
+      showStatus("Write something or choose a photo.", true);
+      return;
+    }
+
+    if (caption.length > MAX_CAPTION_LENGTH) {
+      showStatus("Your post must be 2,000 characters or fewer.", true);
+      return;
+    }
+
+    try {
+      if (file) validateMediaFile(file);
+    } catch (error) {
+      showStatus(error.message, true);
       return;
     }
 
     isPublishing = true;
     publishButton.disabled = true;
-    showStatus("Publishing your personal post…");
+    showStatus("Publishing your personal post...");
 
-    let uploadedUrl = null;
+    let uploadedPath = null;
 
     try {
       const { data: userData, error: userError } =
@@ -216,8 +377,12 @@ async function loadPersonalPosts() {
         throw new Error("Please sign in before creating a post.");
       }
 
+      let uploadedUrl = null;
+
       if (file) {
-        uploadedUrl = await uploadMedia(file);
+        const uploaded = await uploadMedia(file);
+        uploadedUrl = uploaded.url;
+        uploadedPath = uploaded.path;
       }
 
       const { error: insertError } = await client
@@ -231,30 +396,89 @@ async function loadPersonalPosts() {
 
       if (insertError) throw insertError;
 
+      // The database insert succeeded, so keep the uploaded file.
+      uploadedPath = null;
+
       form.reset();
-      showStatus("Your personal post was saved.");
+      showStatus("Your personal post was published successfully.");
+
       await loadPersonalPosts();
     } catch (error) {
-      console.error("My Feed publish error:", error);
-      showStatus(error.message || "Could not publish your post.", true);
+      console.error("GARAGE Feed publishing failed:", error);
+
+      if (uploadedPath) {
+        await removeUploadedMedia(uploadedPath);
+      }
+
+      showStatus(
+        "Could not publish your post: " + explainError(error),
+        true
+      );
     } finally {
       isPublishing = false;
       publishButton.disabled = false;
     }
   });
 
+  // =========================================================
+  // 9. Authentication and initialization
+  // =========================================================
   async function initialize() {
-    const { data, error } = await client.auth.getUser();
+    try {
+      const { data, error } = await client.auth.getUser();
 
-    if (error || !data.user) {
-      showStatus("Please sign in to view and create your personal posts.", true);
+      if (error) throw error;
+
+      currentUser = data.user;
+
+      if (!currentUser) {
+        publishButton.disabled = true;
+        showStatus(
+          "Please sign in to view and create your personal posts.",
+          true
+        );
+
+        feedList.replaceChildren();
+
+        const empty = document.createElement("p");
+        empty.className = "feed-empty";
+        empty.textContent = "Sign in to see your personal feed.";
+        feedList.appendChild(empty);
+        return;
+      }
+
+      publishButton.disabled = false;
+      await loadPersonalPosts();
+    } catch (error) {
+      console.error("GARAGE Feed initialization failed:", error);
       publishButton.disabled = true;
-      return;
+      showStatus(
+        "Could not initialize your feed: " + explainError(error),
+        true
+      );
     }
-
-    currentUser = data.user;
-    await loadPersonalPosts();
   }
+
+  client.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+
+    if (currentUser) {
+      publishButton.disabled = false;
+      loadPersonalPosts();
+    } else {
+      currentUser = null;
+      publishButton.disabled = true;
+      loadRequestNumber++;
+      feedList.replaceChildren();
+
+      const empty = document.createElement("p");
+      empty.className = "feed-empty";
+      empty.textContent = "Sign in to see your personal feed.";
+      feedList.appendChild(empty);
+
+      showStatus("Please sign in to view and create personal posts.");
+    }
+  });
 
   initialize();
 })();
