@@ -2,11 +2,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- 1. Page settings -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    name="description"
+    content="Share car builds, photos, modifications, and updates with the GARAGE community."
+  >
+  <meta name="theme-color" content="#080808">
+
   <title>My Feed | GARAGE</title>
   <link rel="stylesheet" href="style.css">
 
+  <!-- 2. Feed styling -->
   <style>
     .feed-page {
       width: min(700px, 92%);
@@ -22,8 +30,10 @@
     .feed-intro {
       color: #aaa;
       margin-bottom: 24px;
+      line-height: 1.6;
     }
 
+    /* Post composer */
     #post-form {
       display: grid;
       gap: 12px;
@@ -31,6 +41,10 @@
       background: #111;
       border: 1px solid #333;
       border-radius: 12px;
+    }
+
+    #post-form label {
+      font-weight: 600;
     }
 
     #post-caption {
@@ -42,17 +56,32 @@
       border: 1px solid #333;
       border-radius: 8px;
       background: #151515;
-      color: white;
+      color: #fff;
       font: inherit;
+      line-height: 1.5;
+    }
+
+    #post-caption::placeholder {
+      color: #888;
     }
 
     #post-caption:focus {
       outline: 1px solid #39ff14;
+      border-color: #39ff14;
     }
 
     #post-image {
-      color: #bbb;
+      width: 100%;
       max-width: 100%;
+      color: #bbb;
+      font: inherit;
+    }
+
+    .feed-upload-help {
+      margin: 0;
+      color: #999;
+      font-size: 0.85rem;
+      line-height: 1.5;
     }
 
     #post-form button {
@@ -61,8 +90,14 @@
       border-radius: 8px;
       background: #39ff14;
       color: #080808;
+      font: inherit;
       font-weight: bold;
       cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    #post-form button:hover:not(:disabled) {
+      opacity: 0.85;
     }
 
     #post-form button:disabled {
@@ -71,10 +106,13 @@
     }
 
     #feed-status {
+      margin: 0;
       color: #aaa;
       overflow-wrap: anywhere;
+      line-height: 1.5;
     }
 
+    /* Posts list */
     #feed-list {
       display: grid;
       gap: 18px;
@@ -95,9 +133,11 @@
       align-items: center;
       gap: 12px;
       margin-bottom: 12px;
+      min-width: 0;
     }
 
     .feed-post-avatar {
+      flex: 0 0 44px;
       width: 44px;
       height: 44px;
       border-radius: 50%;
@@ -106,9 +146,14 @@
       border: 1px solid #39ff14;
     }
 
+    .feed-post-author-info {
+      min-width: 0;
+    }
+
     .feed-post-author {
       margin: 0;
       font-weight: bold;
+      overflow-wrap: anywhere;
     }
 
     .feed-post-date {
@@ -119,6 +164,7 @@
 
     .feed-post-caption {
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
       line-height: 1.6;
     }
 
@@ -136,23 +182,57 @@
       color: #999;
       text-align: center;
       padding: 24px 12px;
+      line-height: 1.6;
+    }
+
+    /* Mobile layout */
+    @media (max-width: 600px) {
+      .feed-page {
+        margin-top: 28px;
+      }
+
+      .feed-page h1 {
+        font-size: 1.7rem;
+      }
+
+      #post-form,
+      .feed-post {
+        padding: 14px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
 
 <body>
+  <!-- 3. Main navigation -->
   <header class="topbar">
-    <a class="brand" href="index.html">
+    <a class="brand" href="index.html" aria-label="GARAGE home">
       <span class="brand-icon">G</span>
       GARAGE<span class="green">.</span>
     </a>
 
-    <a class="auth-nav-link" href="index.html">Home</a>
-    <a class="auth-nav-link" href="feed.html">My Feed</a>
-    <a class="auth-nav-link" href="profile.html">My Profile</a>
-    <a class="auth-nav-link" href="members.html">Members</a>
+    <nav class="profile-navigation" aria-label="Main navigation">
+      <a class="auth-nav-link" href="index.html">Home</a>
+      <a
+        class="auth-nav-link"
+        href="feed.html"
+        aria-current="page"
+      >My Feed</a>
+      <a class="auth-nav-link" href="profile.html">My Profile</a>
+      <a class="auth-nav-link" href="members.html">Members</a>
+    </nav>
   </header>
 
+  <!-- 4. Feed page -->
   <main class="feed-page">
     <h1>MY <span class="green">FEED</span></h1>
 
@@ -160,24 +240,35 @@
       Share your builds, photos, and updates with the GARAGE community.
     </p>
 
+    <!-- 5. Create a post -->
     <form id="post-form">
-      <label for="post-caption">What's happening in your garage?</label>
+      <label for="post-caption">
+        What's happening in your garage?
+      </label>
 
       <textarea
         id="post-caption"
+        name="caption"
         maxlength="2000"
         placeholder="Show off your latest build..."
+        aria-describedby="caption-help"
       ></textarea>
+
+      <p id="caption-help" class="feed-upload-help">
+        Tell the community about your build or latest project.
+      </p>
 
       <label for="post-image">Add a photo (optional)</label>
 
       <input
         id="post-image"
+        name="image"
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
+        aria-describedby="image-help"
       >
 
-      <p class="feed-post-date">
+      <p id="image-help" class="feed-upload-help">
         JPG, PNG, WebP or GIF. Maximum 5 MB.
       </p>
 
@@ -185,16 +276,23 @@
         POST
       </button>
 
-      <p id="feed-status" role="status" aria-live="polite"></p>
+      <p
+        id="feed-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
     </form>
 
-    <div id="feed-list">
+    <!-- 6. Posts rendered by feed.js -->
+    <section id="feed-list" aria-label="Your posts" aria-live="polite">
       <p class="feed-empty">Loading your posts...</p>
-    </div>
+    </section>
   </main>
 
+  <!-- 7. Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./supabase-client.js"></script>
-  <script src="feed.js"></script>
+  <script src="./feed.js"></script>
 </body>
 </html>
