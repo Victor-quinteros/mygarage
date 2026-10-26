@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0b0e0b">
+  <meta name="description" content="GARAGE is an automotive community for sharing builds, repairs, photos and videos.">
   <title>GARAGE | Automotive Community</title>
   <link rel="stylesheet" href="style.css">
 
@@ -101,6 +102,20 @@
       overflow-wrap: anywhere;
     }
 
+    .feed-media-preview img,
+    .feed-media-preview video {
+      display: block;
+      max-width: 100%;
+      max-height: 420px;
+      border-radius: 10px;
+      margin-top: 12px;
+    }
+
+    .feed-posts,
+    #feed {
+      min-width: 0;
+    }
+
     @media (max-width: 760px) {
       .topbar {
         flex-wrap: wrap;
@@ -176,16 +191,17 @@
         ◇ &nbsp; Car marketplace
       </button>
 
-      <button class="nav" type="button" data-page="garage">
-        ⚙ &nbsp; My garage
-      </button>
-
-      <a
+      <button
         class="nav"
-        href="feed.html"
+        type="button"
+        data-page="garage"
         data-auth-only
         hidden
-      >▤ &nbsp; My Feed</a>
+      >⚙ &nbsp; My garage</button>
+
+      <a class="nav" href="feed.html" data-auth-only hidden>
+        ▤ &nbsp; My Feed
+      </a>
 
       <button
         class="nav"
@@ -222,42 +238,62 @@
         </p>
       </section>
 
-      <!-- COMMUNITY FEED -->
-      <section id="feedPage" class="page">
+      <!-- PUBLIC COMMUNITY FEED -->
+      <section
+        id="feedPage"
+        class="page"
+        aria-labelledby="community-feed-title"
+      >
         <div class="section-heading">
-          <h2>Community feed</h2>
-          <span class="live"><i></i> YOUR GARAGE</span>
+          <h2 id="community-feed-title">Community feed</h2>
+          <span class="live"><i></i> COMMUNITY</span>
         </div>
 
+        <!-- Only authenticated users can publish posts. -->
         <form id="postForm" class="composer" data-auth-only hidden>
           <label for="postText">What's happening in your garage?</label>
           <textarea
             id="postText"
             placeholder="Share your latest build, repair or car meet..."
-            required
+            maxlength="5000"
           ></textarea>
 
           <div class="composer-bottom">
-            <label class="upload-label" for="postMedia">＋ Photo/video</label>
+            <label class="upload-label" for="postMedia">
+              ＋ Photo/video
+            </label>
+
             <input
               id="postMedia"
+              name="postMedia"
               type="file"
               accept="image/*,video/*"
               hidden
             >
+
             <span id="fileName" class="muted">No media selected</span>
-            <button class="primary" type="submit">Publish post ↗</button>
+
+            <button class="primary" type="submit">
+              Publish post ↗
+            </button>
           </div>
 
-          <div id="mediaPreview"></div>
+          <div
+            id="mediaPreview"
+            class="feed-media-preview"
+            aria-live="polite"
+          ></div>
         </form>
 
+        <!-- Shown to visitors who are not signed in. -->
         <div id="guestPostPrompt" class="guest-card guest-banner">
           <h3>Got a build to share?</h3>
           <p>
-            Join GARAGE to publish posts, share car photos
-            and connect with other enthusiasts.
+            Anyone can explore the community feed.
+            Join GARAGE to publish posts, share photos and videos,
+            like builds, and comment.
           </p>
+
           <div class="guest-actions">
             <a class="guest-button guest-button-primary" href="auth.html">
               Join GARAGE
@@ -268,7 +304,15 @@
           </div>
         </div>
 
-        <div id="feed" aria-live="polite"></div>
+        <!-- Public post cards, likes and comments are rendered here. -->
+        <div
+          id="feed"
+          class="feed-posts"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <p class="muted">Loading community posts...</p>
+        </div>
       </section>
 
       <!-- DISCOVER -->
@@ -307,11 +351,17 @@
           <h3>List a car</h3>
 
           <label for="carName">Car name</label>
-          <input id="carName" placeholder="e.g. Honda Civic 2008" required>
+          <input
+            id="carName"
+            name="carName"
+            placeholder="e.g. Honda Civic 2008"
+            required
+          >
 
           <label for="carPrice">Price in USD</label>
           <input
             id="carPrice"
+            name="carPrice"
             type="number"
             min="0"
             step="0.01"
@@ -322,6 +372,7 @@
           <label for="carDetails">Car details</label>
           <input
             id="carDetails"
+            name="carDetails"
             placeholder="Condition, mileage, location..."
           >
 
@@ -339,31 +390,18 @@
         <div id="carListings" class="listing-grid"></div>
       </section>
 
-      <!-- MY GARAGE -->
-      <section id="garagePage" class="page hidden">
+      <!-- PRIVATE GARAGE -->
+      <section
+        id="garagePage"
+        class="page hidden"
+        data-auth-only
+        hidden
+      >
         <div class="section-heading">
           <h2>My garage</h2>
         </div>
 
-        <div id="guestGarage" class="guest-card">
-          <h3>Your garage starts here.</h3>
-          <p>
-            Add your cars, document modifications and keep
-            your automotive projects organized in one place.
-          </p>
-          <div class="guest-actions">
-            <a class="guest-button guest-button-primary" href="auth.html">
-              Log in / Create account
-            </a>
-            <button
-              class="guest-button guest-button-secondary"
-              type="button"
-              data-page="feed"
-            >Explore community</button>
-          </div>
-        </div>
-
-        <div id="memberGarage" data-auth-only hidden>
+        <div id="memberGarage">
           <div class="composer">
             <h3>Add a car</h3>
             <form id="carForm">
@@ -420,7 +458,7 @@
         <div id="memberDirectory"></div>
       </section>
 
-      <!-- MESSAGES -->
+      <!-- PRIVATE MESSAGES -->
       <section
         id="messagesPage"
         class="page hidden"
@@ -443,17 +481,24 @@
               <option value="">Loading members...</option>
             </select>
 
-            <div id="conversation" class="conversation" aria-live="polite"></div>
+            <div
+              id="conversation"
+              class="conversation"
+              aria-live="polite"
+            ></div>
 
             <label for="messageText">Your message</label>
             <textarea
               id="messageText"
+              name="messageText"
               placeholder="Write a message..."
               maxlength="5000"
               required
             ></textarea>
 
-            <button class="primary" type="submit">Send message ↗</button>
+            <button class="primary" type="submit">
+              Send message ↗
+            </button>
           </form>
         </div>
       </section>
@@ -483,7 +528,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- Load Supabase before the shared client and application scripts. -->
+  <!-- Keep one shared Supabase client and one application script entry point. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./supabase-client.js"></script>
   <script src="./garage.js" defer></script>
