@@ -1,114 +1,55 @@
 
 /* =========================================================
-   GARAGE — MEMBERS PAGE
-   ---------------------------------------------------------
-   FEATURES
-   1. Load public member profiles from Supabase
-   2. Display newest members
-   3. Rank top contributors by public post count
-   4. Search all members
-   5. Display individual member profiles
-
-   REQUIREMENTS
-   - supabase-client.js must load before this file.
-   - Public profile and community-post read policies must
-     permit the relevant queries.
-========================================================= */
+   GARAGE — PUBLIC MEMBER DIRECTORY AND PROFILES
+   File: members.js
+   ========================================================= */
 
 (() => {
   "use strict";
 
-  /* =======================================================
-     1. SUPABASE CLIENT
-  ======================================================= */
-
+  // 1. SUPABASE CLIENT AND PAGE ELEMENTS
   const client = window.garageSupabase;
 
   if (!client) {
     console.error(
-      "GARAGE Members: Supabase client is not initialized."
+      "GARAGE: Supabase client was not found. Check supabase-client.js."
     );
     return;
   }
 
+  const $ = (id) => document.getElementById(id);
 
-  /* =======================================================
-     2. PAGE ELEMENTS
-  ======================================================= */
+  const directoryView = $("directory-view");
+  const memberView = $("member-view");
+  const membersGrid = $("members-grid");
+  const memberSearch = $("member-search");
+  const membersMessage = $("members-message");
 
-  const directoryView = document.getElementById("directory-view");
-  const memberView = document.getElementById("member-view");
+  const newestMembersGrid = $("newest-members-grid");
+  const newestMembersMessage = $("newest-members-message");
 
-  const grid = document.getElementById("members-grid");
-  const search = document.getElementById("member-search");
-  const message = document.getElementById("members-message");
+  const topContributorsGrid = $("top-contributors-grid");
+  const topContributorsMessage = $("top-contributors-message");
 
-  const newestGrid = document.getElementById("newest-members-grid");
-  const newestMessage = document.getElementById("newest-members-message");
+  const memberDetail = $("member-detail");
+  const memberMessage = $("member-message");
 
-  const contributorsGrid = document.getElementById(
-    "top-contributors-grid"
-  );
-  const contributorsMessage = document.getElementById(
-    "top-contributors-message"
-  );
+  const PROFILE_FIELDS =
+    "id, username, display_name, bio, favorite_car, avatar_url, created_at";
 
-  const detail = document.getElementById("member-detail");
-  const detailMessage = document.getElementById("member-message");
+  let allProfiles = [];
+  let publicPostCounts = {};
+  let signedInUser = null;
 
-  const REQUIRED_ELEMENTS = [
-    directoryView,
-    memberView,
-    grid,
-    search,
-    message,
-    newestGrid,
-    newestMessage,
-    contributorsGrid,
-    contributorsMessage,
-    detail,
-    detailMessage
-  ];
-
-  if (REQUIRED_ELEMENTS.some((element) => !element)) {
-    console.error(
-      "GARAGE Members: One or more required HTML elements are missing."
-    );
-    return;
+  // 2. GENERAL HELPERS
+  function setMessage(element, message) {
+    if (element) {
+      element.textContent = message || "";
+    }
   }
 
-
-  /* =======================================================
-     3. CONFIGURATION AND PAGE STATE
-  ======================================================= */
-
-  // Maximum number of cards in the two featured sections.
-  const NEWEST_MEMBERS_LIMIT = 6;
-  const TOP_CONTRIBUTORS_LIMIT = 6;
-
-  // Shared public profile fields.
-  const PROFILE_FIELDS = [
-    "id",
-    "username",
-    "display_name",
-    "bio",
-    "favorite_car",
-    "avatar_url",
-    "created_at"
-  ].join(", ");
-
-  let profiles = [];
-  let publicPostCounts = new Map();
-
-
-  /* =======================================================
-     4. GENERAL HELPER FUNCTIONS
-  ======================================================= */
-
-  // Add text safely without interpreting it as HTML.
   function addTextElement(parent, tag, text, className) {
     const element = document.createElement(tag);
-
     element.textContent = text ?? "";
 
     if (className) {
@@ -116,402 +57,210 @@
     }
 
     parent.appendChild(element);
-
     return element;
   }
 
-
-  // Display a message in a section.
-  function setMessage(element, text) {
-    element.textContent = text;
-  }
-
-
-  // Get a member's display name.
   function getMemberName(profile) {
     return (
-      profile.display_name ||
-      profile.username ||
+      profile.display_name?.trim() ||
+      profile.username?.trim() ||
       "GARAGE Member"
     );
   }
 
-
-  // Create a URL for an individual member profile.
   function getMemberProfileUrl(profile) {
     return (
       "members.html?username=" +
-      encodeURIComponent(profile.username)
+      encodeURIComponent(profile.username || "")
     );
   }
 
-
-  // Get the number of public posts made by a member.
   function getPublicPostCount(profile) {
-    if (!profile.id) {
-      return 0;
-    }
-
-    return publicPostCounts.get(profile.id) || 0;
+    return Number(publicPostCounts[profile.id] || 0);
   }
 
-
-  // Sort profiles by creation date, newest first.
-  function sortProfilesNewestFirst(list) {
-    return [...list].sort((a, b) => {
-      const dateA = Date.parse(a.created_at || "");
-      const dateB = Date.parse(b.created_at || "");
-
-      // Profiles without a valid date go after dated profiles.
-      const validA = Number.isFinite(dateA);
-      const validB = Number.isFinite(dateB);
-
-      if (validA && validB) {
-        return dateB - dateA;
-      }
-
-      if (validA) return -1;
-      if (validB) return 1;
-
-      return getMemberName(a).localeCompare(getMemberName(b));
+  function sortNewestFirst(profiles) {
+    return [...profiles].sort((a, b) => {
+      return (
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime()
+      );
     });
   }
 
+  function createAvatar(profile, className = "member-avatar") {
+    const wrapper = document.createElement("div");
+    wrapper.className = className;
 
-  /* =======================================================
-     5. MEMBER AVATARS
-  ======================================================= */
+    const initial = getMemberName(profile).charAt(0).toUpperCase();
 
-  function addAvatar(parent, profile, isDetail = false) {
-    const name = getMemberName(profile);
-    const initial = name.trim().charAt(0).toUpperCase() || "?";
+    if (profile.avatar_url) {
+      const image = document.createElement("img");
+      image.src = profile.avatar_url;
+      image.alt = getMemberName(profile) + " avatar";
+      image.loading = "lazy";
 
-    const avatar = document.createElement("img");
+      image.addEventListener("error", () => {
+        wrapper.replaceChildren();
+        addTextElement(wrapper, "span", initial);
+      }, { once: true });
 
-    avatar.className = isDetail
-      ? "member-detail-avatar"
-      : "member-avatar";
-
-    avatar.alt = name + "'s profile picture";
-    avatar.loading = "lazy";
-
-    // Replace missing or broken images with an initial.
-    function showFallback() {
-      if (!avatar.isConnected) {
-        return;
-      }
-
-      const fallback = document.createElement("div");
-
-      fallback.className =
-        avatar.className + " member-avatar-fallback";
-
-      fallback.setAttribute("role", "img");
-      fallback.setAttribute(
-        "aria-label",
-        "No profile picture for " + name
-      );
-
-      fallback.textContent = initial;
-      avatar.replaceWith(fallback);
+      wrapper.appendChild(image);
+    } else {
+      addTextElement(wrapper, "span", initial);
     }
 
-    if (!profile.avatar_url) {
-      // The image is not attached yet, so add the fallback directly.
-      const fallback = document.createElement("div");
-
-      fallback.className =
-        avatar.className + " member-avatar-fallback";
-
-      fallback.setAttribute("role", "img");
-      fallback.setAttribute(
-        "aria-label",
-        "No profile picture for " + name
-      );
-
-      fallback.textContent = initial;
-      parent.appendChild(fallback);
-
-      return;
-    }
-
-    avatar.addEventListener(
-      "error",
-      showFallback,
-      { once: true }
-    );
-
-    avatar.src = profile.avatar_url;
-    parent.appendChild(avatar);
+    return wrapper;
   }
 
+  function clearElement(element) {
+    if (element) {
+      element.replaceChildren();
+    }
+  }
 
-  /* =======================================================
-     6. MEMBER CARD CREATION
-     Shared by newest members, contributors, and directory.
-  ======================================================= */
-
+  // 3. MEMBER CARDS
   function createMemberCard(profile, options = {}) {
-    const {
-      showBio = true,
-      showFavoriteCar = true,
-      showPostCount = false
-    } = options;
-
     const card = document.createElement("a");
-
     card.className = "member-card";
     card.href = getMemberProfileUrl(profile);
 
-    // Profile picture.
-    addAvatar(card, profile);
+    card.appendChild(createAvatar(profile));
 
-    // Display name.
+    const details = document.createElement("div");
+    details.className = "member-card-details";
+
     addTextElement(
-      card,
-      "h2",
-      getMemberName(profile)
+      details,
+      "h3",
+      getMemberName(profile),
+      "member-name"
     );
 
-    // Username.
     addTextElement(
-      card,
+      details,
       "p",
       "@" + profile.username,
       "member-username"
     );
 
-    // Favorite car.
-    if (showFavoriteCar && profile.favorite_car) {
+    if (profile.favorite_car) {
       addTextElement(
-        card,
+        details,
         "p",
-        "Favorite car: " + profile.favorite_car
+        "Favorite car: " + profile.favorite_car,
+        "member-favorite-car"
       );
     }
 
-    // Short biography.
-    if (showBio && profile.bio) {
-      const shortBio = profile.bio.length > 120
-        ? profile.bio.slice(0, 120) + "..."
-        : profile.bio;
-
-      addTextElement(card, "p", shortBio);
+    if (profile.bio && options.showBio) {
+      addTextElement(
+        details,
+        "p",
+        profile.bio,
+        "member-bio"
+      );
     }
 
-    // Public community post count.
-    if (showPostCount) {
-      const count = getPublicPostCount(profile);
-      const label = count === 1 ? "public post" : "public posts";
-
+    if (options.showPostCount) {
       addTextElement(
-        card,
+        details,
         "p",
-        count + " " + label,
+        getPublicPostCount(profile) + " public posts",
         "member-post-count"
       );
     }
 
+    card.appendChild(details);
     return card;
   }
 
+  // 4. RENDER MEMBER COLLECTIONS
+  function renderNewestMembers(profiles) {
+    clearElement(newestMembersGrid);
 
-  /* =======================================================
-     7. NEWEST MEMBERS SECTION
-  ======================================================= */
+    const newest = sortNewestFirst(profiles).slice(0, 6);
 
-  function renderNewestMembers() {
-    newestGrid.replaceChildren();
+    if (!newestMembersGrid) return;
 
-    const newestMembers = sortProfilesNewestFirst(profiles)
-      .slice(0, NEWEST_MEMBERS_LIMIT);
-
-    if (newestMembers.length === 0) {
-      setMessage(
-        newestMessage,
-        "No public member profiles yet."
-      );
-
+    if (!newest.length) {
+      setMessage(newestMembersMessage, "No members found yet.");
       return;
     }
 
-    setMessage(
-      newestMessage,
-      "The latest members to join GARAGE."
-    );
+    setMessage(newestMembersMessage, "");
 
-    newestMembers.forEach((profile) => {
-      newestGrid.appendChild(
-        createMemberCard(profile, {
-          showBio: false,
-          showFavoriteCar: true
-        })
+    newest.forEach((profile) => {
+      newestMembersGrid.appendChild(createMemberCard(profile));
+    });
+  }
+
+  function renderTopContributors(profiles) {
+    clearElement(topContributorsGrid);
+
+    const ranked = [...profiles].sort((a, b) => {
+      return (
+        getPublicPostCount(b) - getPublicPostCount(a) ||
+        getMemberName(a).localeCompare(getMemberName(b))
+      );
+    }).slice(0, 6);
+
+    if (!topContributorsGrid) return;
+
+    if (!ranked.length) {
+      setMessage(topContributorsMessage, "No contributors found yet.");
+      return;
+    }
+
+    setMessage(topContributorsMessage, "");
+
+    ranked.forEach((profile) => {
+      topContributorsGrid.appendChild(
+        createMemberCard(profile, { showPostCount: true })
       );
     });
   }
 
+  function renderDirectory(profiles) {
+    clearElement(membersGrid);
 
-  /* =======================================================
-     8. TOP CONTRIBUTORS SECTION
-     Rank profiles by the number of public community posts.
-  ======================================================= */
+    if (!membersGrid) return;
 
-  function renderTopContributors() {
-    contributorsGrid.replaceChildren();
-
-    const contributors = [...profiles]
-      .filter((profile) => getPublicPostCount(profile) > 0)
-      .sort((a, b) => {
-        const countDifference =
-          getPublicPostCount(b) - getPublicPostCount(a);
-
-        if (countDifference !== 0) {
-          return countDifference;
-        }
-
-        return getMemberName(a).localeCompare(getMemberName(b));
-      })
-      .slice(0, TOP_CONTRIBUTORS_LIMIT);
-
-    if (contributors.length === 0) {
-      setMessage(
-        contributorsMessage,
-        "No public community posts yet. Share a build to become a top contributor!"
-      );
-
+    if (!profiles.length) {
+      setMessage(membersMessage, "No matching members found.");
       return;
     }
 
-    setMessage(
-      contributorsMessage,
-      "Ranked by public community posts."
-    );
+    setMessage(membersMessage, "");
 
-    contributors.forEach((profile, index) => {
-      const card = createMemberCard(profile, {
-        showBio: false,
-        showFavoriteCar: true,
-        showPostCount: true
-      });
-
-      // Add a rank label.
-      const rank = document.createElement("p");
-      rank.className = "member-rank";
-      rank.textContent = "#" + (index + 1) + " Contributor";
-
-      card.insertBefore(rank, card.children[1]);
-
-      contributorsGrid.appendChild(card);
-    });
-  }
-
-
-  /* =======================================================
-     9. ALL MEMBERS DIRECTORY AND SEARCH
-  ======================================================= */
-
-  function renderDirectory() {
-    const term = search.value.trim().toLowerCase();
-
-    const matches = profiles.filter((profile) => {
-      const searchable = [
-        profile.username,
-        profile.display_name,
-        profile.favorite_car,
-        profile.bio
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchable.includes(term);
-    });
-
-    grid.replaceChildren();
-
-    if (matches.length === 0) {
-      setMessage(
-        message,
-        profiles.length
-          ? "No members match your search."
-          : "No public profiles yet. Be the first to create one!"
-      );
-
-      return;
-    }
-
-    setMessage(
-      message,
-      matches.length + (
-        matches.length === 1
-          ? " member found."
-          : " members found."
-      )
-    );
-
-    matches.forEach((profile) => {
-      grid.appendChild(
+    profiles.forEach((profile) => {
+      membersGrid.appendChild(
         createMemberCard(profile, {
           showBio: true,
-          showFavoriteCar: true
+          showPostCount: true
         })
       );
     });
   }
 
-
-  /* =======================================================
-     10. LOAD PROFILES FROM SUPABASE
-  ======================================================= */
-
+  // 5. LOAD MEMBER PROFILES AND POST COUNTS
   async function loadProfiles() {
-    setMessage(newestMessage, "Loading newest members...");
-    setMessage(contributorsMessage, "Loading top contributors...");
-    setMessage(message, "Loading members...");
-
     const { data, error } = await client
       .from("profiles")
       .select(PROFILE_FIELDS)
-      .not("username", "is", null);
+      .not("username", "is", null)
+      .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(
-        "GARAGE Members: Could not load profiles:",
-        error
-      );
-
-      setMessage(
-        newestMessage,
-        "Could not load newest members."
-      );
-
-      setMessage(
-        contributorsMessage,
-        "Could not load top contributors."
-      );
-
-      setMessage(
-        message,
-        "Could not load members. Check your profiles table and its read policy."
-      );
-
-      return;
+      console.error("GARAGE: Could not load profiles:", error);
+      setMessage(membersMessage, "Could not load members. Please try again.");
+      setMessage(newestMembersMessage, "Could not load members.");
+      setMessage(topContributorsMessage, "Could not load contributors.");
+      return [];
     }
 
-    profiles = data || [];
-
-    // Some profiles may not have a database ID in older schemas.
-    // Such profiles can appear in the directory but cannot be
-    // matched to posts for contributor counts.
-    renderNewestMembers();
-    renderDirectory();
+    return data || [];
   }
-
-
-  /* =======================================================
-     11. LOAD PUBLIC COMMUNITY POST COUNTS
-     Only counts posts marked is_community = true.
-  ======================================================= */
 
   async function loadPublicPostCounts() {
     const { data, error } = await client
@@ -520,173 +269,232 @@
       .eq("is_community", true);
 
     if (error) {
-      console.error(
-        "GARAGE Members: Could not load public post counts:",
-        error
-      );
-
-      publicPostCounts = new Map();
-
-      setMessage(
-        contributorsMessage,
-        "Contributor rankings are unavailable. Check public post read permissions."
-      );
-
+      console.warn("GARAGE: Could not load public post counts:", error);
+      publicPostCounts = {};
       return;
     }
 
-    const counts = new Map();
+    publicPostCounts = {};
 
     (data || []).forEach((post) => {
-      if (!post.user_id) {
-        return;
+      if (post.user_id) {
+        publicPostCounts[post.user_id] =
+          (publicPostCounts[post.user_id] || 0) + 1;
       }
-
-      counts.set(
-        post.user_id,
-        (counts.get(post.user_id) || 0) + 1
-      );
     });
-
-    publicPostCounts = counts;
-
-    renderTopContributors();
   }
 
-
-  /* =======================================================
-     12. INDIVIDUAL MEMBER PROFILE
-  ======================================================= */
-
+  // 6. PUBLIC MEMBER PROFILE AND MESSAGE BUTTON
   async function loadMember(username) {
-    directoryView.hidden = true;
-    memberView.hidden = false;
+    if (directoryView) directoryView.hidden = true;
+    if (memberView) memberView.hidden = false;
 
-    setMessage(detailMessage, "Loading profile...");
-    detail.replaceChildren();
+    clearElement(memberDetail);
+    setMessage(memberMessage, "Loading member profile...");
 
-    const { data, error } = await client
+    const { data: profile, error } = await client
       .from("profiles")
       .select(PROFILE_FIELDS)
       .eq("username", username)
       .maybeSingle();
 
-    if (error) {
-      console.error(
-        "GARAGE Members: Could not load profile:",
-        error
-      );
-
-      setMessage(
-        detailMessage,
-        "Could not load this profile. Please try again later."
-      );
-
+    if (error || !profile) {
+      console.error("GARAGE: Could not load member profile:", error);
+      setMessage(memberMessage, "Member profile not found.");
       return;
     }
 
-    if (!data) {
-      setMessage(
-        detailMessage,
-        "Member not found. They may not have created a public profile yet."
-      );
+    setMessage(memberMessage, "");
 
-      return;
-    }
+    // Avatar and profile information
+    memberDetail.appendChild(createAvatar(profile, "member-avatar-large"));
 
-    // Profile picture.
-    addAvatar(detail, data, true);
-
-    // Name and username.
     addTextElement(
-      detail,
+      memberDetail,
       "h2",
-      getMemberName(data)
+      getMemberName(profile),
+      "member-name"
     );
 
     addTextElement(
-      detail,
+      memberDetail,
       "p",
-      "@" + data.username,
+      "@" + profile.username,
       "member-username"
     );
 
-    // Biography.
-    addTextElement(detail, "h3", "About");
+    if (profile.bio) {
+      addTextElement(memberDetail, "p", profile.bio, "member-bio");
+    }
 
-    addTextElement(
-      detail,
-      "p",
-      data.bio || "This member hasn't added a bio yet."
-    );
-
-    // Favorite car.
-    addTextElement(detail, "h3", "Favorite car");
-
-    addTextElement(
-      detail,
-      "p",
-      data.favorite_car || "Not specified yet."
-    );
-
-    // Public contribution count.
-    if (data.id) {
-      const postCount = getPublicPostCount(data);
-      const label = postCount === 1
-        ? "public community post"
-        : "public community posts";
-
+    if (profile.favorite_car) {
       addTextElement(
-        detail,
-        "h3",
-        "Community contributions"
-      );
-
-      addTextElement(
-        detail,
+        memberDetail,
         "p",
-        postCount + " " + label
+        "Favorite car: " + profile.favorite_car,
+        "member-favorite-car"
       );
     }
 
-    setMessage(detailMessage, "");
-  }
+    addTextElement(
+      memberDetail,
+      "p",
+      getPublicPostCount(profile) + " public posts",
+      "member-post-count"
+    );
 
+    // Add the messaging button only when signed in and viewing another member.
+    if (signedInUser && signedInUser.id !== profile.id) {
+      const messageLink = document.createElement("a");
+      messageLink.className = "primary message-member-button";
+      messageLink.textContent = "Message Member";
+      messageLink.href =
+        "index.html?page=messages&to=" +
+        encodeURIComponent(profile.id);
 
-  /* =======================================================
-     13. SEARCH EVENTS
-  ======================================================= */
+      memberDetail.appendChild(messageLink);
+    } else if (!signedInUser) {
+      const signInNote = document.createElement("p");
+      signInNote.className = "muted";
+      signInNote.textContent =
+        "Sign in to message this member.";
+      memberDetail.appendChild(signInNote);
+    }
 
-  search.addEventListener("input", renderDirectory);
+    // Show the member's public posts, if available.
+    const postsHeading = document.createElement("h3");
+    postsHeading.textContent = "Community Posts";
+    memberDetail.appendChild(postsHeading);
 
+    const postsContainer = document.createElement("div");
+    postsContainer.className = "member-public-posts";
+    memberDetail.appendChild(postsContainer);
 
-  /* =======================================================
-     14. PAGE STARTUP
-  ======================================================= */
+    const { data: posts, error: postsError } = await client
+      .from("posts")
+      .select("id, caption, image_url, created_at")
+      .eq("user_id", profile.id)
+      .eq("is_community", true)
+      .order("created_at", { ascending: false });
 
-  async function initializeMembersPage() {
-    // A profile link takes priority over directory rendering.
-    const username = new URLSearchParams(
-      window.location.search
-    ).get("username");
-
-    if (username) {
-      await loadMember(username.trim().toLowerCase());
+    if (postsError) {
+      console.warn("GARAGE: Could not load member posts:", postsError);
+      addTextElement(
+        postsContainer,
+        "p",
+        "Could not load this member's posts."
+      );
       return;
     }
 
-    // Load profiles and post counts independently.
-    // Contributor cards render when both results are available.
-    const [profilesResult, postsResult] = await Promise.all([
+    if (!posts || posts.length === 0) {
+      addTextElement(postsContainer, "p", "No public posts yet.");
+      return;
+    }
+
+    posts.forEach((post) => {
+      const postCard = document.createElement("article");
+      postCard.className = "member-post-card";
+
+      if (post.image_url) {
+        const image = document.createElement("img");
+        image.src = post.image_url;
+        image.alt = "Community post";
+        image.loading = "lazy";
+        postCard.appendChild(image);
+      }
+
+      if (post.caption) {
+        addTextElement(postCard, "p", post.caption, "member-post-caption");
+      }
+
+      if (post.created_at) {
+        const date = new Date(post.created_at);
+        addTextElement(
+          postCard,
+          "p",
+          date.toLocaleDateString(),
+          "member-post-date"
+        );
+      }
+
+      postsContainer.appendChild(postCard);
+    });
+  }
+
+  // 7. SEARCH AND PAGE INITIALIZATION
+  function setupSearch() {
+    if (!memberSearch) return;
+
+    memberSearch.addEventListener("input", () => {
+      const query = memberSearch.value.trim().toLowerCase();
+
+      const filtered = allProfiles.filter((profile) => {
+        const searchable = [
+          profile.username,
+          profile.display_name,
+          profile.bio,
+          profile.favorite_car
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        return searchable.includes(query);
+      });
+
+      renderDirectory(filtered);
+    });
+  }
+
+  async function loadSignedInUser() {
+    const { data, error } = await client.auth.getUser();
+
+    if (error) {
+      console.warn("GARAGE: Could not check sign-in status:", error);
+      signedInUser = null;
+      return;
+    }
+
+    signedInUser = data?.user || null;
+  }
+
+  async function initializeMembersPage() {
+    await loadSignedInUser();
+
+    const params = new URLSearchParams(window.location.search);
+    const username = params.get("username");
+
+    if (username) {
+      await loadPublicPostCounts();
+      await loadMember(username);
+      return;
+    }
+
+    if (directoryView) directoryView.hidden = false;
+    if (memberView) memberView.hidden = true;
+
+    const [profiles] = await Promise.all([
       loadProfiles(),
       loadPublicPostCounts()
     ]);
 
-    // Render contributors again after both requests finish,
-    // ensuring profiles and post counts are both available.
-    renderTopContributors();
+    allProfiles = profiles;
+
+    renderDirectory(allProfiles);
+    renderNewestMembers(allProfiles);
+    renderTopContributors(allProfiles);
+    setupSearch();
   }
 
-  initializeMembersPage();
+  // Refresh the profile button after sign-in/sign-out in this tab.
+  client.auth.onAuthStateChange((_event, session) => {
+    signedInUser = session?.user || null;
 
+    const params = new URLSearchParams(window.location.search);
+    const username = params.get("username");
+
+    if (username) {
+      loadMember(username);
+    }
+  });
+
+  initializeMembersPage();
 })();
