@@ -1952,3 +1952,477 @@
       );
     }
   }
+  async function loadConversation() {
+    const select = $("messageTo");
+
+    if (!select || !client) return;
+
+    const recipientId = select.value;
+
+    if (!recipientId) {
+      activeConversationId = null;
+
+      showConversationMessage(
+        "Choose a member to open a conversation."
+      );
+
+      return;
+    }
+
+    const user = await getSignedInUser();
+
+    if (!user) {
+      showConversationMessage(
+        "Please sign in to use private messages."
+      );
+      return;
+    }
+
+    const thisLoad = ++conversationLoadNumber;
+
+    activeConversationId = null;
+
+    showConversationMessage("Loading conversation...");
+
+    try {
+      const { data: existing, error: existingError } = await client
+        .from("conversations")
+        .select("id, user_one, user_two")
+        .or(
+          `and(user_one.eq.${user.id},user_two.eq.${recipientId}),` +
+          `and(user_one.eq.${recipientId},user_two.eq.${user.id})`
+        )
+        .limit(1);
+
+      if (existingError) throw existingError;
+      if (thisLoad !== conversationLoadNumber) return;
+
+      let conversation = existing?.[0] || null;
+
+      if (!conversation) {
+        const { data: created, error: createError } = await client
+          .from("conversations")
+          .insert({
+            user_one: user.id,
+            user_two: recipientId
+          })
+          .select("id, user_one, user_two")
+          .single();
+
+        if (createError) {
+          // Another request may have created the conversation first.
+          const { data: retry, error: retryError } = await client
+            .from("conversations")
+            .select("id, user_one, user_two")
+            .or(
+              `and(user_one.eq.${user.id},user_two.eq.${recipientId}),` +
+              `and(user_one.eq.${recipientId},user_two.eq.${user.id})`
+            )
+            .limit(1);
+
+          if (retryError) throw createError;
+
+          conversation = retry?.[0] || null;
+
+          if (!conversation) throw createError;
+        } else {
+          conversation = created;
+        }
+      }
+
+      if (thisLoad !== conversationLoadNumber) return;
+
+      activeConversationId = conversation.id;
+
+      await loadConversationMessages(
+        conversation.id,
+        thisLoad
+      );
+    } catch (error) {
+      if (thisLoad !== conversationLoadNumber) return;
+
+      console.error("GARAGE conversation error:", error);
+
+      showConversationMessage(
+        "Could not open conversation: " + error.message,
+        true
+      );
+    }
+  }
+
+  async function loadConversationMessages(conversationId, loadNumber) {
+    const conversation = $("conversation");
+    if (!conversation || !client) return;
+
+    try {
+      const { data: messages, error } = await client
+        .from("messages")
+        .select("id, sender_id, recipient_id, content, created_at, read_at")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      if (loadNumber !== conversationLoadNumber) return;
+      if (conversationId !== activeConversationId) return;
+
+      const user = await getSignedInUser();
+
+      if (!user) {
+        showConversationMessage(
+          "Please sign in to view messages."
+        );
+        return;
+      }
+
+      conversation.replaceChildren();
+
+      if (!messages?.length) {
+        showConversationMessage(
+          "No messages yet. Say hello to start the conversation."
+        );
+        return;
+      }
+
+      for (const message of messages) {
+        const wrapper = document.createElement("div");
+
+        wrapper.className =
+          "message " +
+          (message.sender_id === user.id ? "message-own" : "message-other");
+
+        const body = document.createElement("p");
+        body.textContent = message.content;
+
+        const metadata = document.createElement("small");
+        metadata.className = "muted";
+
+        const date = formatDate(message.created_at);
+
+        metadata.textContent =
+          message.sender_id === user.id
+            ? `${date}${message.read_at ? " · Read" : ""}`
+            : date;
+
+        wrapper.append(body, metadata);
+        conversation.appendChild(wrapper);
+      }
+
+      conversation.scrollTop = conversation.scrollHeight;
+
+      const unreadIds = messages
+        .filter((message) =>
+          message.recipient_id === user.id &&
+          message.sender_id !== user.id &&
+          !message.read_at
+        )
+        .map((message) => message.id);
+
+      if (unreadIds.length) {
+        const now = new Date().toISOString();
+
+        const { error: readError } = await client
+          .from("messages")
+          .update({ read_at: now })
+          .in("id", unreadIds)
+          .eq("recipient_id", user.id);
+
+        if (readError) {
+          console.warn(
+            "GARAGE message read status error:",
+            readError.message
+          );
+        }
+      }
+    } catch (error) {
+      console.error("GARAGE message loading error:", error);
+
+      showConversationMessage(
+        "Could not load messages: " + error.message,
+        true
+      );
+    }
+  }
+
+  async function sendMessage(event) {
+    event.preventDefault();
+
+    if (isSendingMessage) return;
+
+    const user = await getSignedInUser();
+
+    if (!user) {
+      notify("Please sign in to send messages.");
+      return;
+    }
+
+    const recipientId = $("messageTo")?.value;
+    const input = $("messageText");
+    const content = input?.value.trim() || "";
+
+    if (!recipientId) {
+      notify("Choose a member first.");
+      return;
+    }
+
+    if (!content) return;
+
+    if (content.length > 4000) {
+      notify("Messages must be 4,000 characters or fewer.");
+      return;
+    }
+
+    const form = $("messageForm");
+    const button = form?.querySelector('button[type="submit"]');
+
+    isSendingMessage = true;
+    setButtonBusy(button, true, "Sending...", "Send");
+
+    try {
+      if (!activeConversationId) {
+        await loadConversation();
+      }
+
+      if (!activeConversationId) {
+        throw new Error("Could not open the conversation.");
+      }
+
+      const conversationId = activeConversationId;
+
+      const { error } = await client.from("messages").insert({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        recipient_id: recipientId,
+        content
+      });
+
+      if (error) throw error;
+
+      input.value = "";
+
+      await loadConversationMessages(
+        conversationId,
+        conversationLoadNumber
+      );
+    } catch (error) {
+      console.error("GARAGE send message error:", error);
+
+      notify("Could not send message: " + error.message);
+    } finally {
+      isSendingMessage = false;
+
+      setButtonBusy(button, false, "Sending...", "Send");
+    }
+  }
+
+  function setupMessaging() {
+    $("messageTo")?.addEventListener("change", () => {
+      loadConversation();
+    });
+
+    $("messageForm")?.addEventListener("submit", sendMessage);
+
+    $("refreshMessages")?.addEventListener("click", () => {
+      if (activeConversationId) {
+        loadConversationMessages(
+          activeConversationId,
+          conversationLoadNumber
+        );
+      } else {
+        loadMessageMembers();
+      }
+    });
+  }
+
+  function setupSearch() {
+    const search = $("search");
+
+    search?.addEventListener("input", renderFeed);
+  }
+
+  function setupNavigation() {
+    document.querySelectorAll("[data-scroll-to]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = $(button.dataset.scrollTo);
+
+        target?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    });
+  }
+
+  function setupAuthLinks() {
+    $("logout-btn")?.addEventListener("click", async (event) => {
+      event.preventDefault();
+
+      if (!client?.auth) return;
+
+      const button = event.currentTarget;
+      button.disabled = true;
+
+      try {
+        const { error } = await client.auth.signOut();
+
+        if (error) throw error;
+
+        notify("You have signed out.");
+        window.location.href = "index.html";
+      } catch (error) {
+        console.error("GARAGE sign-out error:", error);
+        notify("Could not sign out: " + error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  function setupAuthState() {
+    if (!client?.auth || authSubscription) return;
+
+    const {
+      data: { subscription }
+    } = client.auth.onAuthStateChange((event, session) => {
+      currentUser = session?.user || null;
+
+      updateAuthUI();
+
+      if (event === "SIGNED_OUT") {
+        currentProfile = null;
+        activeConversationId = null;
+        communityPosts = [];
+        postLikeCounts = {};
+        postComments = {};
+        likedPostIds = new Set();
+
+        renderFeed();
+
+        if ($("messageTo")) {
+          $("messageTo").replaceChildren();
+
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "Sign in to message members";
+
+          $("messageTo").appendChild(option);
+          $("messageTo").disabled = true;
+        }
+
+        showConversationMessage(
+          "Please sign in to use private messages."
+        );
+
+        return;
+      }
+
+      if (session?.user) {
+        void loadCurrentProfile(session.user);
+      }
+    });
+
+    authSubscription = subscription;
+  }
+
+  async function loadCurrentProfile(user) {
+    if (!client || !user) return;
+
+    try {
+      const { data, error } = await client
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, favorite_car")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (currentUser?.id !== user.id) return;
+
+      currentProfile = data || null;
+
+      updateAuthUI();
+
+      await loadCommunityPosts();
+
+      if ($("messageTo")) {
+        await loadMessageMembers();
+      }
+    } catch (error) {
+      console.error("GARAGE profile loading error:", error);
+    }
+  }
+
+  function setupAccountStatus() {
+    const status = $("account-status");
+    if (!status) return;
+
+    status.addEventListener("click", () => {
+      if (!currentUser) {
+        window.location.href = "auth.html";
+      }
+    });
+  }
+
+  async function initialize() {
+    renderMembers();
+    renderListings();
+
+    setupMediaPicker();
+    setupFeedInteractions();
+    setupMemberInteractions();
+    setupListingForm();
+    setupMessaging();
+    setupSearch();
+    setupNavigation();
+    setupAuthLinks();
+    setupAccountStatus();
+
+    if ($("postForm")) {
+      $("postForm").addEventListener("submit", publishPost);
+    }
+
+    setupAuthState();
+
+    if (!client?.auth) {
+      updateAuthUI();
+
+      showStatus(
+        "Supabase is not initialized. Check supabase-client.js."
+      );
+
+      return;
+    }
+
+    try {
+      const { data, error } = await client.auth.getSession();
+
+      if (error) throw error;
+
+      currentUser = data?.session?.user || null;
+
+      updateAuthUI();
+
+      if (currentUser) {
+        await loadCurrentProfile(currentUser);
+      } else {
+        await loadCommunityPosts();
+
+        if ($("messageTo")) {
+          await loadMessageMembers();
+        }
+      }
+    } catch (error) {
+      console.error("GARAGE initialization error:", error);
+
+      showStatus(
+        "Could not initialize GARAGE: " + error.message
+      );
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  } else {
+    initialize();
+  }
+})();
