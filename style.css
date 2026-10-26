@@ -1,4 +1,6 @@
 
+/* GARAGE — COMPLETE STYLESHEET */
+
 :root {
   --bg: #0b0d0b;
   --panel: #141714;
@@ -7,19 +9,22 @@
   --green: #39ff14;
   --text: #f3f6f0;
   --muted: #929b90;
+  --input-bg: #0e110e;
+  --radius: 12px;
 }
 
-/* =========================
-   GLOBAL STYLES
-========================= */
+/* 1. GLOBAL STYLES */
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
   min-height: 100%;
   background: var(--bg);
+  scroll-behavior: smooth;
 }
 
 body {
@@ -27,13 +32,17 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 14px;
+  font: 14px/1.5 Arial, Helvetica, sans-serif;
+}
+
+img {
+  max-width: 100%;
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -44,30 +53,68 @@ button {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--green);
-  outline-offset: 2px;
+  outline-offset: 3px;
+}
+
+a {
+  color: var(--green);
 }
 
 .green {
   color: var(--green);
 }
 
-.hidden {
+.hidden,
+[hidden] {
   display: none !important;
 }
 
-/* =========================
-   HEADER AND BRAND
-========================= */
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+
+.footer-note {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.live {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.live i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  background: var(--green);
+  border-radius: 50%;
+}
+
+/* 2. HEADER AND BRAND */
 
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   min-height: 70px;
   padding: 12px 5%;
   background: #101210;
@@ -75,7 +122,7 @@ a:focus-visible {
 }
 
 .brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 9px;
   color: var(--text);
@@ -89,9 +136,9 @@ a:focus-visible {
 .brand-icon {
   display: grid;
   place-items: center;
+  flex: 0 0 34px;
   width: 34px;
   height: 34px;
-  flex-shrink: 0;
   color: var(--bg);
   background: var(--green);
   border-radius: 8px;
@@ -100,13 +147,19 @@ a:focus-visible {
 
 .search,
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   padding: 12px;
   color: var(--text);
-  background: #0e110e;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #788174;
 }
 
 .search {
@@ -123,8 +176,6 @@ textarea {
   text-decoration: none;
   white-space: nowrap;
 }
-
-/* Header authentication links */
 
 .auth-nav-link {
   display: inline-block;
@@ -146,7 +197,6 @@ textarea {
 button.auth-nav-link {
   font-family: inherit;
   font-size: inherit;
-  cursor: pointer;
 }
 
 .auth-nav-link[hidden] {
@@ -156,6 +206,7 @@ button.auth-nav-link {
 #main-nav {
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
 }
 
@@ -164,18 +215,18 @@ button.auth-nav-link {
   font-size: 14px;
 }
 
-/* =========================
-   MAIN PAGE LAYOUT
-========================= */
+/* 3. MAIN LAYOUT AND SIDEBAR */
 
 .layout {
   display: grid;
   grid-template-columns: 210px minmax(0, 660px) 250px;
   justify-content: center;
+  align-items: start;
   gap: 24px;
+  width: 100%;
   max-width: 1450px;
   padding: 28px 24px;
-  margin: auto;
+  margin: 0 auto;
 }
 
 .sidebar,
@@ -183,20 +234,8 @@ button.auth-nav-link {
   position: sticky;
   top: 94px;
   align-self: start;
+  min-width: 0;
 }
-
-.eyebrow {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.8px;
-}
-
-/* =========================
-   SIDEBAR NAVIGATION
-========================= */
-
-/* Use the same appearance for links and buttons. */
 
 .sidebar .nav {
   display: block;
@@ -222,8 +261,8 @@ button.auth-nav-link {
 }
 
 .side-note {
-  margin-top: 35px;
   padding: 15px;
+  margin-top: 35px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -236,9 +275,7 @@ button.auth-nav-link {
   font-weight: normal;
 }
 
-/* =========================
-   HERO SECTION
-========================= */
+/* 4. HERO AND HEADINGS */
 
 .hero {
   padding: 28px;
@@ -262,16 +299,11 @@ button.auth-nav-link {
   line-height: 1.6;
 }
 
-/* =========================
-   HEADINGS AND TEXT
-========================= */
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.25;
 }
 
 h2 {
@@ -283,51 +315,34 @@ h3 {
   font-size: 15px;
 }
 
-.muted {
-  color: var(--muted);
-  font-size: 12px;
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
-.footer-note {
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1.8;
-}
-
-.live {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-
-.live i {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 5px;
-  background: var(--green);
-  border-radius: 50%;
-}
-
-/* =========================
-   CARDS AND COMPOSERS
-========================= */
+/* 5. PANELS, FORMS, AND BUTTONS */
 
 .composer,
 .post,
 .panel,
 .feature-card,
 .listing-card {
+  min-width: 0;
   padding: 18px;
   margin-bottom: 16px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
 }
 
-.composer label {
+.composer label,
+.auth-panel label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 textarea {
@@ -352,18 +367,25 @@ textarea {
   cursor: pointer;
 }
 
-/* Buttons */
-
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
   padding: 11px 16px;
   color: #10130d;
   background: var(--green);
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
   font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .primary:hover {
+  color: #10130d;
   background: #c0ff69;
 }
 
@@ -376,22 +398,37 @@ textarea {
   width: 100%;
 }
 
-/* =========================
-   COMMUNITY POSTS
-========================= */
+.action {
+  padding: 8px 10px;
+  color: #bdc5b8;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.action:hover,
+.action.liked,
+.action.following {
+  color: var(--green);
+  border-color: #516d38;
+}
+
+/* 6. COMMUNITY POSTS */
 
 .post-head {
   display: flex;
   align-items: center;
   gap: 11px;
+  min-width: 0;
 }
 
 .avatar {
   display: grid;
   place-items: center;
-  flex-shrink: 0;
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
+  overflow: hidden;
   color: var(--green);
   background: #293622;
   border-radius: 50%;
@@ -411,8 +448,9 @@ textarea {
 .post-media {
   display: block;
   width: 100%;
+  max-width: 100%;
   max-height: 420px;
-  object-fit: cover;
+  object-fit: contain;
   background: #090a09;
   border-radius: 8px;
 }
@@ -421,23 +459,9 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 14px;
   padding-top: 12px;
+  margin-top: 14px;
   border-top: 1px solid var(--border);
-}
-
-.action {
-  padding: 8px 10px;
-  color: #bdc5b8;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-
-.action.liked,
-.action.following {
-  color: var(--green);
-  border-color: #516d38;
 }
 
 .comment-list {
@@ -460,9 +484,7 @@ textarea {
   min-width: 0;
 }
 
-/* =========================
-   RIGHT SIDEBAR AND MEMBERS
-========================= */
+/* 7. RIGHT SIDEBAR */
 
 .panel {
   padding: 16px;
@@ -472,6 +494,7 @@ textarea {
   display: grid;
   place-items: center;
   min-height: 100px;
+  overflow: hidden;
   background: linear-gradient(135deg, #25351c, #111411);
   border-radius: 8px;
   font-size: 48px;
@@ -481,10 +504,12 @@ textarea {
   display: flex;
   align-items: center;
   gap: 9px;
+  min-width: 0;
   margin: 14px 0;
 }
 
 .member .avatar {
+  flex-basis: 34px;
   width: 34px;
   height: 34px;
 }
@@ -492,6 +517,7 @@ textarea {
 .member-name {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .member-name small {
@@ -500,9 +526,7 @@ textarea {
   color: var(--muted);
 }
 
-/* =========================
-   DISCOVER AND MARKETPLACE
-========================= */
+/* 8. DISCOVER AND MARKETPLACE */
 
 .feature-grid,
 .listing-grid {
@@ -531,13 +555,14 @@ textarea {
   font-weight: 900;
 }
 
-/* =========================
-   MESSAGES
-========================= */
+/* 9. MESSAGES */
 
 .conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-height: 80px;
-  max-height: 260px;
+  max-height: 360px;
   overflow-y: auto;
   padding: 12px;
   margin: 12px 0;
@@ -547,7 +572,13 @@ textarea {
 }
 
 .message {
-  margin: 8px 0;
+  max-width: 90%;
+  padding: 9px 12px;
+  margin: 0;
+  color: var(--text);
+  background: #1a2119;
+  border: 1px solid #2e3b2a;
+  border-radius: 10px;
   overflow-wrap: anywhere;
 }
 
@@ -555,15 +586,13 @@ textarea {
   color: var(--green);
 }
 
-/* =========================
-   NOTIFICATIONS
-========================= */
+/* 10. TOAST NOTIFICATIONS */
 
 .toast {
   position: fixed;
   bottom: 20px;
   left: 50%;
-  z-index: 30;
+  z-index: 50;
   display: none;
   max-width: 90%;
   padding: 12px 18px;
@@ -578,12 +607,10 @@ textarea {
   display: block;
 }
 
-/* =========================
-   AUTHENTICATION PAGES
-========================= */
+/* 11. AUTHENTICATION */
 
 .auth-panel {
-  max-width: 440px;
+  width: min(440px, calc(100% - 24px));
   margin: 28px auto;
   padding: 24px;
   color: #eee;
@@ -597,8 +624,7 @@ textarea {
 }
 
 .auth-panel label {
-  display: block;
-  margin: 14px 0 6px;
+  margin-top: 14px;
 }
 
 .auth-panel input {
@@ -650,8 +676,8 @@ textarea {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 12px 0;
   padding: 14px;
+  margin: 12px 0;
   color: var(--green);
   background: #101310;
   border: 1px solid #2b3829;
@@ -663,9 +689,7 @@ textarea {
   display: none !important;
 }
 
-/* =========================
-   MY GARAGE
-========================= */
+/* 12. MY GARAGE */
 
 #carForm label {
   display: block;
@@ -686,19 +710,17 @@ textarea {
 
 .car-card {
   padding: 16px;
+  overflow-wrap: anywhere;
   background: #111713;
   border: 1px solid #303b33;
   border-radius: 12px;
-  overflow-wrap: anywhere;
 }
 
 .car-card h3 {
   margin-top: 0;
 }
 
-/* =========================
-   PASSWORD VISIBILITY TOGGLE
-========================= */
+/* 13. PASSWORD VISIBILITY TOGGLE */
 
 .password-wrapper {
   display: flex;
@@ -733,9 +755,197 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* =========================
-   PROFILE PAGE NAVIGATION
-========================= */
+/* 14. PUBLIC MEMBER DIRECTORY */
+
+#directory-view,
+#member-view,
+#members-grid,
+#newest-members-grid,
+#top-contributors-grid,
+#member-detail {
+  min-width: 0;
+}
+
+#members-grid,
+#newest-members-grid,
+#top-contributors-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.member-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 150px;
+  padding: 20px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+
+.member-card:hover {
+  border-color: #4a6a37;
+  background: #171c16;
+}
+
+.member-card-details {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.member-card .member-name {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.member-card .member-username {
+  margin: 0 0 8px;
+  color: var(--green);
+  overflow-wrap: anywhere;
+}
+
+.member-card .member-favorite-car,
+.member-card .member-bio,
+.member-card .member-post-count {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.member-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  color: var(--green);
+  background: #242b21;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.member-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.member-avatar span {
+  display: block;
+  line-height: 1;
+}
+
+/* 15. PUBLIC MEMBER PROFILE */
+
+#member-detail {
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+
+#member-detail > .member-avatar-large {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  color: var(--green);
+  background: #242b21;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.member-avatar-large img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+#member-detail > .member-name {
+  margin: 0 0 6px;
+  font-size: 25px;
+  overflow-wrap: anywhere;
+}
+
+#member-detail > .member-username {
+  color: var(--green);
+}
+
+#member-detail > .member-bio,
+#member-detail > .member-favorite-car,
+#member-detail > .member-post-count {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.message-member-button {
+  margin: 12px 0 20px;
+}
+
+.member-public-posts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.member-post-card {
+  min-width: 0;
+  padding: 14px;
+  overflow: hidden;
+  background: #0f120f;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.member-post-card img {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  max-height: 320px;
+  margin: 0 auto 12px;
+  object-fit: contain;
+  background: #090a09;
+  border-radius: 8px;
+}
+
+.member-post-caption {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.member-post-date {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* 16. PROFILE EDITOR */
 
 .profile-navigation {
   display: flex;
@@ -753,13 +963,28 @@ textarea {
   color: var(--green);
 }
 
-/* =========================
-   RESPONSIVE LAYOUT
-========================= */
+#profile-form label {
+  display: block;
+  margin: 14px 0 6px;
+}
 
-@media (max-width: 1050px) {
+#avatar-preview {
+  display: block;
+  width: 120px;
+  height: 120px;
+  max-width: 100%;
+  margin: 12px 0;
+  object-fit: cover;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+}
+
+/* 17. TABLET LAYOUT */
+
+@media (max-width: 1100px) {
   .layout {
     grid-template-columns: 180px minmax(0, 1fr);
+    gap: 18px;
   }
 
   .rightbar {
@@ -767,7 +992,9 @@ textarea {
   }
 }
 
-@media (max-width: 650px) {
+/* 18. MOBILE LAYOUT */
+
+@media (max-width: 700px) {
   .topbar {
     flex-wrap: wrap;
     gap: 10px;
@@ -801,6 +1028,7 @@ textarea {
     gap: 5px;
     overflow-x: auto;
     margin-bottom: 16px;
+    padding-bottom: 5px;
   }
 
   .sidebar .eyebrow,
@@ -825,19 +1053,47 @@ textarea {
   }
 
   .feature-grid,
-  .listing-grid {
-    grid-template-columns: 1fr;
+  .listing-grid,
+  #members-grid,
+  #newest-members-grid,
+  #top-contributors-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .composer,
   .post {
     padding: 13px;
   }
+
+  #member-detail {
+    padding: 16px;
+  }
 }
 
 @media (max-width: 480px) {
   .auth-panel {
-    margin: 16px 0;
+    width: calc(100% - 24px);
+    margin: 16px auto;
     padding: 16px;
+  }
+
+  .member-card {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .member-card .member-avatar {
+    flex-basis: 56px;
+    width: 56px;
+    height: 56px;
+  }
+
+  #member-detail > .member-avatar-large {
+    width: 96px;
+    height: 96px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
   }
 }
