@@ -1,13 +1,29 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- =====================================================
+       1. PAGE METADATA
+  ====================================================== -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0d0b">
+
   <title>Members | GARAGE</title>
+
+  <!-- =====================================================
+       2. SHARED WEBSITE STYLES
+  ====================================================== -->
   <link rel="stylesheet" href="style.css">
 
+  <!-- =====================================================
+       3. MEMBERS PAGE STYLES
+       Page-specific styles only.
+  ====================================================== -->
   <style>
+    /* -----------------------------------------------------
+       3.1 Main page layout
+    ----------------------------------------------------- */
+
     .members-page {
       width: min(1000px, 92%);
       margin: 40px auto;
@@ -22,11 +38,38 @@
     .members-subtitle {
       color: #aaa;
       margin-bottom: 24px;
+      line-height: 1.6;
     }
+
+    .members-section {
+      margin-top: 36px;
+    }
+
+    .members-section-header {
+      margin-bottom: 18px;
+    }
+
+    .members-section-header h2 {
+      margin: 0 0 8px;
+      font-size: 1.4rem;
+    }
+
+    .members-section-header p {
+      color: #929b90;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    /* -----------------------------------------------------
+       3.2 Member card grids
+    ----------------------------------------------------- */
 
     .members-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(230px, 1fr)
+      );
       gap: 16px;
       margin-top: 24px;
     }
@@ -34,17 +77,22 @@
     .member-card {
       display: block;
       padding: 20px;
-      border: 1px solid #333;
+      border: 1px solid #292f29;
       border-radius: 12px;
-      background: #111;
-      color: white;
+      background: #141714;
+      color: #f3f6f0;
       text-decoration: none;
       overflow-wrap: anywhere;
+      transition:
+        border-color 0.2s ease,
+        transform 0.2s ease;
     }
 
-    .member-card:hover {
+    .member-card:hover,
+    .member-card:focus-visible {
       border-color: #39ff14;
       transform: translateY(-2px);
+      outline: none;
     }
 
     .member-card h2 {
@@ -55,6 +103,7 @@
     .member-card p {
       color: #bbb;
       margin: 8px 0;
+      line-height: 1.5;
     }
 
     .member-username {
@@ -62,13 +111,74 @@
       font-size: 0.9rem;
     }
 
+    /* -----------------------------------------------------
+       3.3 Member avatars
+    ----------------------------------------------------- */
+
+    .member-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid #39ff14;
+      background: #222;
+      display: block;
+      margin-bottom: 14px;
+    }
+
+    .member-avatar-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      background: #222;
+      color: #39ff14;
+      font-size: 1.8rem;
+      font-weight: bold;
+    }
+
+    /* -----------------------------------------------------
+       3.4 Search field
+    ----------------------------------------------------- */
+
+    .members-search {
+      width: 100%;
+      max-width: 450px;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #292f29;
+      border-radius: 8px;
+      background: #151515;
+      color: #fff;
+      font: inherit;
+    }
+
+    .members-search:focus {
+      outline: 1px solid #39ff14;
+      border-color: #39ff14;
+    }
+
+    /* -----------------------------------------------------
+       3.5 Status and empty-state messages
+    ----------------------------------------------------- */
+
+    .members-message {
+      color: #aaa;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
+    /* -----------------------------------------------------
+       3.6 Individual member profile
+    ----------------------------------------------------- */
+
     .member-detail {
       max-width: 650px;
       padding: 24px;
       margin-top: 24px;
-      border: 1px solid #333;
+      border: 1px solid #292f29;
       border-radius: 12px;
-      background: #111;
+      background: #141714;
       overflow-wrap: anywhere;
     }
 
@@ -80,107 +190,248 @@
       line-height: 1.6;
     }
 
-    .members-search {
-      width: 100%;
-      max-width: 450px;
-      box-sizing: border-box;
-      padding: 12px;
-      border: 1px solid #333;
-      border-radius: 8px;
-      background: #151515;
-      color: white;
-      font: inherit;
+    .member-detail-avatar {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid #39ff14;
+      background: #222;
+      display: block;
+      margin-bottom: 18px;
     }
+
+    /* -----------------------------------------------------
+       3.7 Back navigation
+    ----------------------------------------------------- */
 
     .members-back {
       display: inline-block;
       margin: 12px 0;
       color: #39ff14;
+      text-decoration: none;
     }
 
-    .members-message {
-      color: #aaa;
-      overflow-wrap: anywhere;
+    .members-back:hover {
+      text-decoration: underline;
     }
-    .member-avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #39ff14;
-  background: #222;
-  display: block;
-  margin-bottom: 14px;
-}
 
-.member-detail-avatar {
-  width: 110px;
-  height: 110px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #39ff14;
-  background: #222;
-  display: block;
-  margin-bottom: 18px;
-}
-    .member-avatar-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  background: #222;
-  color: #39ff14;
-  font-size: 1.8rem;
-  font-weight: bold;
-}
+    /* -----------------------------------------------------
+       3.8 Responsive layout
+    ----------------------------------------------------- */
+
+    @media (max-width: 600px) {
+      .members-page {
+        margin-top: 24px;
+      }
+
+      .members-page h1 {
+        font-size: 1.65rem;
+      }
+
+      .members-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .member-detail {
+        padding: 18px;
+      }
+    }
   </style>
 </head>
 
 <body>
+
+  <!-- =====================================================
+       4. SITE HEADER AND NAVIGATION
+  ====================================================== -->
+
   <header class="topbar">
-    <a class="brand" href="index.html">
+    <a class="brand" href="index.html" aria-label="GARAGE home">
       <span class="brand-icon">G</span>
       GARAGE<span class="green">.</span>
     </a>
-    <a class="auth-nav-link" href="index.html">Home</a>
-    <a class="auth-nav-link" href="profile.html">My Profile</a>
+
+    <nav aria-label="Main navigation">
+      <a class="auth-nav-link" href="index.html">Home</a>
+      <a class="auth-nav-link" href="profile.html">My Profile</a>
+    </nav>
   </header>
 
+
+  <!-- =====================================================
+       5. MAIN MEMBERS PAGE
+  ====================================================== -->
+
   <main class="members-page">
-    <section id="directory-view">
-      <h1>GARAGE <span class="green">MEMBERS</span></h1>
+
+    <!-- -----------------------------------------------------
+         5.1 Member directory heading
+    ------------------------------------------------------ -->
+
+    <section id="directory-view" aria-labelledby="members-heading">
+      <h1 id="members-heading">
+        GARAGE <span class="green">MEMBERS</span>
+      </h1>
+
       <p class="members-subtitle">
         Meet the people behind the builds.
       </p>
 
-      <input
-        id="member-search"
-        class="members-search"
-        type="search"
-        placeholder="Search usernames, names, or cars..."
-        aria-label="Search members"
+
+      <!-- ---------------------------------------------------
+           5.2 Newest members
+           Populated by members.js using Supabase data.
+      ---------------------------------------------------- -->
+
+      <section
+        id="newest-members-section"
+        class="members-section"
+        aria-labelledby="newest-members-heading"
       >
+        <div class="members-section-header">
+          <h2 id="newest-members-heading">
+            <span class="green">NEWEST</span> MEMBERS
+          </h2>
 
-      <p id="members-message" class="members-message" role="status">
-        Loading members...
-      </p>
+          <p>Welcome the latest people to join the GARAGE community.</p>
+        </div>
 
-      <div id="members-grid" class="members-grid"></div>
+        <p
+          id="newest-members-message"
+          class="members-message"
+          role="status"
+        >
+          Loading newest members...
+        </p>
+
+        <div
+          id="newest-members-grid"
+          class="members-grid"
+          aria-live="polite"
+        ></div>
+      </section>
+
+
+      <!-- ---------------------------------------------------
+           5.3 Top contributors
+           Intended to be ranked by public community posts.
+      ---------------------------------------------------- -->
+
+      <section
+        id="top-contributors-section"
+        class="members-section"
+        aria-labelledby="top-contributors-heading"
+      >
+        <div class="members-section-header">
+          <h2 id="top-contributors-heading">
+            <span class="green">TOP</span> CONTRIBUTORS
+          </h2>
+
+          <p>Meet the members sharing their builds with the community.</p>
+        </div>
+
+        <p
+          id="top-contributors-message"
+          class="members-message"
+          role="status"
+        >
+          Loading top contributors...
+        </p>
+
+        <div
+          id="top-contributors-grid"
+          class="members-grid"
+          aria-live="polite"
+        ></div>
+      </section>
+
+
+      <!-- ---------------------------------------------------
+           5.4 Search all members
+      ---------------------------------------------------- -->
+
+      <section
+        id="all-members-section"
+        class="members-section"
+        aria-labelledby="all-members-heading"
+      >
+        <div class="members-section-header">
+          <h2 id="all-members-heading">
+            ALL <span class="green">MEMBERS</span>
+          </h2>
+
+          <p>Search the community by name, username, or favorite car.</p>
+        </div>
+
+        <label for="member-search">Search members</label>
+
+        <input
+          id="member-search"
+          class="members-search"
+          type="search"
+          placeholder="Search usernames, names, or cars..."
+          aria-label="Search members by username, name, or car"
+          autocomplete="off"
+        >
+
+        <p
+          id="members-message"
+          class="members-message"
+          role="status"
+        >
+          Loading members...
+        </p>
+
+        <div
+          id="members-grid"
+          class="members-grid"
+          aria-live="polite"
+        ></div>
+      </section>
     </section>
 
-    <section id="member-view" hidden>
+
+    <!-- =====================================================
+         6. INDIVIDUAL MEMBER PROFILE VIEW
+         members.js displays this when a member is selected.
+    ====================================================== -->
+
+    <section id="member-view" aria-labelledby="member-profile-heading" hidden>
       <a class="members-back" href="members.html">
-        ← All members
+        &larr; All members
       </a>
 
-      <h1>MEMBER <span class="green">PROFILE</span></h1>
+      <h1 id="member-profile-heading">
+        MEMBER <span class="green">PROFILE</span>
+      </h1>
 
       <article id="member-detail" class="member-detail"></article>
-      <p id="member-message" class="members-message" role="status"></p>
+
+      <p
+        id="member-message"
+        class="members-message"
+        role="status"
+      ></p>
     </section>
+
   </main>
 
+
+  <!-- =====================================================
+       7. JAVASCRIPT
+       Load Supabase first, then the shared client, then
+       members.js. This keeps the client available to the page.
+  ====================================================== -->
+
+  <!-- Supabase JavaScript library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Shared GARAGE Supabase client -->
+  <script src="supabase-client.js"></script>
+
+  <!-- Members directory and member profile functionality -->
   <script src="members.js"></script>
+
 </body>
 </html>
